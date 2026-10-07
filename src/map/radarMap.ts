@@ -23,8 +23,8 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl);
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
 function paddedRegion(): [[number, number], [number, number]] {
-  const padLon = (COVERAGE_BBOX.east - COVERAGE_BBOX.west) * 0.08;
-  const padLat = (COVERAGE_BBOX.north - COVERAGE_BBOX.south) * 0.08;
+  const padLon = (COVERAGE_BBOX.east - COVERAGE_BBOX.west) * 1.5;
+  const padLat = (COVERAGE_BBOX.north - COVERAGE_BBOX.south) * 1.5;
   return [
     [COVERAGE_BBOX.west - padLon, COVERAGE_BBOX.south - padLat],
     [COVERAGE_BBOX.east + padLon, COVERAGE_BBOX.north + padLat]
@@ -54,7 +54,7 @@ export class RadarMap {
       style: buildStyle(opts.basemap),
       center: [SINGAPORE_CENTER.lon, SINGAPORE_CENTER.lat],
       zoom: 10.4,
-      minZoom: 5,
+      minZoom: 3,
       maxZoom: 19.5,
       maxBounds: paddedRegion(),
       attributionControl: false,
@@ -120,6 +120,25 @@ export class RadarMap {
         before
       );
     }
+
+    // Outline of the radar's full coverage so the edge is obvious when zoomed out.
+    const c = COVERAGE_BBOX;
+    m.addSource('coverage', {
+      type: 'geojson',
+      data: {
+        type: 'Feature', properties: {},
+        geometry: { type: 'LineString', coordinates: [[c.west, c.north], [c.east, c.north], [c.east, c.south], [c.west, c.south], [c.west, c.north]] }
+      }
+    });
+    m.addLayer({
+      id: 'coverage', type: 'line', source: 'coverage', maxzoom: 9,
+      paint: {
+        'line-color': dark ? '#a5b4fc' : '#4f46e5',
+        'line-width': 1.2,
+        'line-dasharray': [3, 3],
+        'line-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.7, 9, 0]
+      }
+    });
 
     m.addSource('grid', { type: 'geojson', data: this.gridData });
     m.addLayer(
