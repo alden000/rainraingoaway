@@ -1,6 +1,6 @@
 /**
  * The analysis grid: square cells aligned to Singapore's SVY21 national grid.
- * Cells are 5 m by default; when zoomed out the displayed grid coarsens so the
+ * Cells are 50 m by default; when zoomed out the displayed grid coarsens so the
  * map stays readable, while the point analysis always uses the fine cell.
  *
  * For efficiency the grid is emitted as long grid *lines* plus filled

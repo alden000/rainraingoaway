@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>RainRain — Singapore Rain Radar</title>
-    <meta name="description" content="Hyperlocal rain radar for Singapore: is it raining on your 5 m square, when will it start, when will it stop." />
+    <meta name="description" content="Hyperlocal rain radar for Singapore: is it raining on your 50 m square, when will it start, when will it stop." />
     <meta name="theme-color" content="#070b14" />
     <meta name="color-scheme" content="dark light" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -60,7 +60,7 @@
                 <h1 class="hero__name" id="spot-name">Locating…</h1>
                 <div class="hero__meta">
                   <span class="mono" id="cell-id">—</span>
-                  <span class="tag" id="cell-size">5 m cell</span>
+                  <span class="tag" id="cell-size">50 m cell</span>
                 </div>
               </div>
               <button class="icon-btn" id="save-spot" aria-label="Save this place" data-haptic="success"><span data-icon="star"></span></button>
@@ -210,7 +210,7 @@
             </label>
             <h3 class="section-label">Grid cell size</h3>
             <div class="segmented" id="opt-cell">
-              <button data-value="5">5 m</button><button data-value="10">10 m</button><button data-value="25">25 m</button><button data-value="100">100 m</button>
+              <button data-value="25">25 m</button><button data-value="50">50 m</button><button data-value="100">100 m</button><button data-value="250">250 m</button>
             </div>
             <h3 class="section-label">Overlays &amp; feel</h3>
             <div class="toggles">
@@ -233,7 +233,7 @@
           <header class="modal__head"><h2>How RainRain works</h2><button class="icon-btn" data-close aria-label="Close"><span data-icon="close"></span></button></header>
           <div class="modal__body prose">
             <p><strong>The radar.</strong> Every five minutes NEA's weather radar at Changi publishes a rain-intensity image. RainRain downloads all three images NEA publishes: 70 km (≈290 m pixels) for detail over Singapore, 240 km (≈1 km pixels) and 480 km (≈2 km pixels) to cover southern Malaysia, Riau and beyond. The map always shows the sharpest one available for each area.</p>
-            <p><strong>Your 5 m square.</strong> The map is divided into 5 × 5 m cells aligned to Singapore's SVY21 national grid. Your cell's reading is interpolated from the surrounding radar pixels, so the answer changes smoothly as you move. The radar itself can't resolve 5 m, so neighbouring cells usually agree.</p>
+            <p><strong>Your 50 m square.</strong> The map is divided into 50 × 50 m cells aligned to Singapore's SVY21 national grid. Your cell's reading is interpolated from the surrounding radar pixels (≈290 m each, the finest NEA publishes), so the answer changes smoothly as you move. You can pick a different cell size in Layers &amp; settings.</p>
             <p><strong>Tracking & forecasting.</strong> Successive scans are block-matched to measure how each part of the rain field is moving. The latest scan is then carried forward along that motion (semi-Lagrangian extrapolation), with growth or decay taken from the recent trend. Uncertainty widens with lead time, which is why the forecast shows a <em>chance</em> of rain rather than a yes/no.</p>
             <p><strong>Beyond 30 minutes.</strong> RainRain follows the flow upwind across the 240 km and 480 km images to find the next band of rain headed your way and estimates when it will arrive.</p>
             <p><strong>Wind.</strong> The motion of rain echoes reveals the wind that steers them, typically 1–3 km above ground. It is only available while there is rain to track.</p>

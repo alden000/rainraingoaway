@@ -56,4 +56,4 @@ export const POINT_FORECAST_STEPS = 36; // +180 min of point forecast
 export const NOWCAST_STEPS = 6; // the "next 30 minutes" window
 
 /** Default analysis grid cell edge, metres (aligned to the SVY21 national grid). */
-export const DEFAULT_CELL_M = 5;
+export const DEFAULT_CELL_M = 50;

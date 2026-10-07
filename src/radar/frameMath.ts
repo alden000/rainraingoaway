@@ -39,7 +39,7 @@ export function kmPerPixel(range: RadarRange, width: number): { kx: number; ky: 
 /**
  * Bilinear rain rate (mm/h) at a fractional pixel position, treating each
  * pixel value as located at its centre. Gives a smooth field suitable for
- * the 5 m analysis grid while staying faithful to the native radar pixels.
+ * the analysis grid while staying faithful to the native radar pixels.
  */
 export function sampleRate(levels: Uint8Array, width: number, height: number, x: number, y: number, mask?: Uint8Array | null): number {
   const fx = x - 0.5;

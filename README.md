@@ -1,12 +1,12 @@
 # RainRain — Singapore rain radar, to the square
 
-A Progressive Web App (phone, tablet, desktop) that reads NEA's live weather radar and tells you whether it is raining on **your 5 × 5 m square** of Singapore, when rain will start or stop in the next 30 minutes, what is heading your way beyond that, and which way the wind is steering the showers.
+A Progressive Web App (phone, tablet, desktop) that reads NEA's live weather radar and tells you whether it is raining on **your 50 × 50 m square** of Singapore, when rain will start or stop in the next 30 minutes, what is heading your way beyond that, and which way the wind is steering the showers.
 
 ## Features
 
 - **Live radar** from NEA via [data.gov.sg](https://data.gov.sg) (`/weather-radar-images/70km` and `/240km`), refreshed every 5 minutes, two hours of history.
 - **Custom basemaps**: Midnight, Daylight, Satellite (plus Auto), built on OpenFreeMap vector tiles and covering Singapore plus 10 km.
-- **5 m analysis grid** aligned to Singapore's SVY21 national grid (EPSG:3414). Your cell's reading is bilinearly interpolated from the ~290 m radar pixels. The grid coarsens automatically when you zoom out.
+- **50 m analysis grid** (25–250 m selectable) aligned to Singapore's SVY21 national grid (EPSG:3414). Your cell's reading is bilinearly interpolated from the ~290 m radar pixels, the finest NEA publishes. The grid coarsens automatically when you zoom out.
 - **Pick any spot**: tap the map, search (OneMap), or save places. Saved places get their own status.
 - **30-minute nowcast**: the app tracks rain echoes between scans by block matching, carries the latest scan forward along that motion, and gives a probability that widens with lead time. Output reads like *Rain in ~15 min* or *Easing in ~20 min*.
 - **Beyond 30 minutes**: a point forecast out to 3 hours. It also follows the flow upwind across the 240 km image to find the next rain band and estimate when it arrives.

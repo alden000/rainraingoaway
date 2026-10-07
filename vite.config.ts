@@ -15,7 +15,7 @@ export default defineConfig({
         name: 'RainRain — Singapore Rain Radar',
         short_name: 'RainRain',
         description:
-          'Hyperlocal rain radar for Singapore. Know if it is raining on your 5 m square, when it will start, and when it will stop.',
+          'Hyperlocal rain radar for Singapore. Know if it is raining on your 50 m square, when it will start, and when it will stop.',
         theme_color: '#070b14',
         background_color: '#070b14',
         display: 'standalone',

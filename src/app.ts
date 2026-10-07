@@ -70,6 +70,12 @@ const SETTINGS = persisted<Settings>('rainrain.settings', {
   basemap: 'auto', palette: 'signature', opacity: 85, wind: true, grid: true, forecastPlayback: true,
   haptics: true, sound: false, cellSize: DEFAULT_CELL_M
 });
+/** Cell sizes offered in settings; anything else (e.g. the old 5 m default) moves to the new default. */
+const CELL_SIZES = [25, 50, 100, 250];
+function migrateSettings(s: Settings): Settings {
+  return CELL_SIZES.includes(s.cellSize) ? s : { ...s, cellSize: DEFAULT_CELL_M };
+}
+
 const SAVED = persisted<{ places: SavedPlace[] }>('rainrain.saved', { places: [] });
 /**
  * NEA publishes a scan every 5 minutes, ~10–30 s after the scan's timestamp.
@@ -82,7 +88,7 @@ const MAX_WAIT_MS = 5 * 60_000;
 const STEP_MS = 420;
 
 export class App {
-  private settings = SETTINGS.load();
+  private settings = migrateSettings(SETTINGS.load());
   private saved = SAVED.load().places;
   private spot: Spot | null = null;
   private gps: (LatLon & { acc: number }) | null = null;

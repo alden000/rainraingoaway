@@ -1,6 +1,6 @@
 /**
  * SVY21 — Singapore's national projected coordinate system (EPSG:3414).
- * Transverse Mercator on WGS84; the 5 m analysis grid is aligned to it so a
+ * Transverse Mercator on WGS84; the analysis grid is aligned to it so a
  * cell id such as "N38 745 · E28 000" is stable and nationally meaningful.
  */
 
