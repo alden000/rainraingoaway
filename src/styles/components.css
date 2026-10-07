@@ -336,3 +336,41 @@ input[type='range']::-moz-range-thumb { width: 22px; height: 22px; border: 0; bo
 .splash__status { position: absolute; bottom: calc(var(--safe-bottom) + 56px); left: 0; right: 0; margin: 0 auto; width: min(320px, 80vw); text-align: center; font-size: 13px; color: #9aa6c8; animation: fade-up 1s var(--ease-out) 0.5s both; }
 .splash__bar { margin-top: 12px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
 .splash__bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7dd3fc, #818cf8, #e879f9); border-radius: 3px; transition: width 0.8s var(--ease-out); }
+
+/* ===== PHONE SUMMARY STRIP ================================================ */
+.peek { display: none; }
+@media (max-width: 899px) {
+  .peek {
+    flex: none; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px;
+    margin: 0 12px 10px; padding: 10px 14px 10px 10px; border-radius: 20px; cursor: pointer;
+    background: var(--card); border: 1px solid var(--line); position: relative; overflow: hidden;
+  }
+  .peek::before {
+    content: ''; position: absolute; inset: 0 auto 0 0; width: 3px;
+    background: var(--tone, var(--calm)); transition: background 0.6s;
+  }
+  .peek[data-tone='watch'] { --tone: var(--watch); }
+  .peek[data-tone='wet'] { --tone: var(--wet); }
+  .peek__glyph { width: 44px; height: 46px; }
+  .peek__main { min-width: 0; display: grid; gap: 1px; }
+  .peek__row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .peek__title {
+    font-family: var(--font-display); font-style: italic; font-weight: 400; font-size: 24px; line-height: 1.1;
+    letter-spacing: -0.02em; font-variation-settings: 'opsz' 96, 'SOFT' 100; flex: none;
+  }
+  .peek__place { font-size: 12.5px; color: var(--ink-3); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .peek__next { font-size: 14px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .peek__outlook { font-size: 12px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .peek__side { display: grid; justify-items: end; gap: 6px; }
+  .peek__stat { display: grid; justify-items: end; line-height: 1; }
+  .peek__stat b { font-family: var(--font-display); font-weight: 500; font-size: 22px; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--tone, var(--calm)); }
+  .peek__stat span { margin-top: 3px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-3); }
+  .peek__wind { display: inline-flex; align-items: center; gap: 4px; font-size: 11.5px; font-weight: 650; color: var(--ink-2); white-space: nowrap; }
+  .peek__arrow { display: inline-block; color: var(--accent-2); font-size: 13px; transition: transform 1.2s var(--ease-spring); }
+
+  /* The strip carries status + headline on phones, so the hero keeps just place details & actions. */
+  .hero { min-height: 0; padding: 16px 18px; }
+  .hero__now, .hero__headline { display: none; }
+  .hero__name { font-size: 24px; }
+  .hero__actions { margin-top: 12px; }
+}

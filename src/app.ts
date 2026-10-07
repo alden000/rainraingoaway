@@ -564,6 +564,7 @@ export class App {
       ? `${icons.locate}Finding you… showing island centre`
       : s.kind === 'gps' ? `${icons.navigation}Your location` : `${icons.pin}Selected spot`;
     setText($('#spot-name'), s.name);
+    setText($('#pk-place'), s.name);
     const cell = cellAt(s.lat, s.lon, this.settings.cellSize);
     setText($('#cell-id'), cell.id);
     setText($('#cell-size'), `${this.settings.cellSize} m cell`);
@@ -590,6 +591,22 @@ export class App {
     swapText($('#now-title'), ins.title);
     setText($('#now-rate'), ins.raining ? `${ins.label} · ${ins.rateText}` : pf.clutter ? 'No rain (radar clutter filtered)' : 'No rain on your square');
     setText($('#headline'), ins.headline);
+
+    // Phone summary strip.
+    const peek = $('#peek');
+    peek.dataset.tone = ins.tone;
+    renderGlyph($('#pk-glyph'), ins.cls, ins.tone === 'watch', hour < 7 || hour >= 19);
+    setText($('#pk-title'), ins.title);
+    setText($('#pk-next'), ins.next.text);
+    setText($('#pk-outlook'), ins.outlook.text);
+    const near = Math.max(0, ...pf.steps.slice(1, 7).map((st) => st.prob));
+    if (ins.raining) {
+      setText($('#pk-stat'), pf.nowRate < 1 ? pf.nowRate.toFixed(1) : String(Math.round(pf.nowRate)));
+      setText($('#pk-stat-label'), 'mm/h now');
+    } else {
+      setText($('#pk-stat'), `${Math.round(near * 100)}%`);
+      setText($('#pk-stat-label'), 'rain ≤30 min');
+    }
     this.heroFx.setRate(pf.nowRate);
 
     this.chart.update(pf.steps, pf.issued);
@@ -656,6 +673,10 @@ export class App {
       ? `Over this spot: ${Math.round(w.localSpeedKmh)} km/h from the ${compassPoint(w.localFromDeg)} · tracked on the ${w.source} radar`
       : known ? `Tracked on the ${w.source} radar` : '';
     setText($('#wind-local'), local);
+    setText($('#pk-wind-text'), known ? `${Math.round(w.speedKmh)} km/h ${compassPoint(w.fromDeg)}` : 'Calm');
+    const arrow = $('#pk-arrow');
+    arrow.style.transform = `rotate(${known ? (w.fromDeg + 180) % 360 : 0}deg)`;
+    arrow.style.opacity = known ? '1' : '0.3';
   }
 
   private renderPlaces() {
@@ -761,7 +782,12 @@ export class App {
 
   /* ---- UI wiring ---------------------------------------------------------- */
   private initUI() {
-    this.sheet = new BottomSheet($('#panel'), $('#panel-scroll'), $('#sheet-grabber'), $('#hero'));
+    this.sheet = new BottomSheet($('#panel'), $('#panel-scroll'), $('#sheet-grabber'), $('#peek'));
+    const peek = $('#peek');
+    const togglePeek = () => this.sheet.snap(this.sheet.current === 'peek' ? 'half' : 'peek');
+    peek.addEventListener('click', togglePeek);
+    peek.addEventListener('keydown', (e) => (e.key === 'Enter' || e.key === ' ') && (e.preventDefault(), togglePeek()));
+    setText($('#build-tag'), `Build ${__BUILD__}`);
     this.timeline = new Timeline($('#timeline'), {
       onScrub: (i) => {
         if (!this.playing) {

@@ -136,7 +136,19 @@ function weightedMedian(values: number[], weights: number[]): number {
  * @param frames chronologically sorted scans of one range
  * @param clutter optional stationary-echo mask (1 = ignore)
  */
-export function estimateMotion(frames: RadarFrame[], clutter: Uint8Array | null): MotionField | null {
+/** Allowed departure (km/h) of the domain-wide shift from a coarser range's estimate. */
+const PRIOR_TOLERANCE_KMH = 18;
+
+/**
+ * @param prior optional steering vector (native px / 5 min) from a coarser,
+ *   more stable range. The domain-wide search is then confined around it, so
+ *   sparse or speckly echoes can't produce a wildly wrong match.
+ */
+export function estimateMotion(
+  frames: RadarFrame[],
+  clutter: Uint8Array | null,
+  prior?: { u: number; v: number } | null
+): MotionField | null {
   if (frames.length < 2) return null;
   const latest = frames[frames.length - 1];
   const { width: W, height: H, range } = latest;
@@ -196,12 +208,21 @@ export function estimateMotion(frames: RadarFrame[], clutter: Uint8Array | null)
   };
   if (rainAny < 0.002) return empty;
 
-  let gdx = 0;
-  let gdy = 0;
+  // Search window for the domain-wide shift (level-2 px over the baseline).
+  let cx = 0;
+  let cy = 0;
+  let R = R2;
+  if (prior) {
+    cx = Math.round((prior.u * steps) / 4);
+    cy = Math.round((prior.v * steps) / 4);
+    R = Math.max(2, Math.ceil(((PRIOR_TOLERANCE_KMH / 12) * steps) / kx / 4));
+  }
+  let gdx = cx;
+  let gdy = cy;
   let gBest = Infinity;
-  for (let dy = -R2; dy <= R2; dy++) {
-    for (let dx = -R2; dx <= R2; dx++) {
-      if (dx * dx + dy * dy > R2 * R2) continue;
+  for (let dy = cy - R; dy <= cy + R; dy++) {
+    for (let dx = cx - R; dx <= cx + R; dx++) {
+      if ((dx - cx) ** 2 + (dy - cy) ** 2 > R * R || dx * dx + dy * dy > R2 * R2) continue;
       const c = pairCost(pairs, 2, 0, 0, L2.w, L2.h, dx, dy);
       if (c < gBest) {
         gBest = c;
@@ -210,6 +231,39 @@ export function estimateMotion(frames: RadarFrame[], clutter: Uint8Array | null)
       }
     }
   }
+
+  // ---- 1b. Refine the domain-wide shift to sub-pixel at full resolution ----
+  // Level-2 steps are 4 native px — far too coarse on the wide-range images
+  // (a single step is ~16 km/h at 240 km, ~32 km/h at 480 km).
+  const L0 = pairs[0].A[0];
+  const refine = (lvl: number, cxl: number, cyl: number, w: number, h: number) => {
+    let bx = cxl, by = cyl, bc = Infinity;
+    const cost = new Map<string, number>();
+    const at = (dx: number, dy: number) => {
+      const k = dx + ',' + dy;
+      let c = cost.get(k);
+      if (c === undefined) cost.set(k, (c = pairCost(pairs, lvl, 0, 0, w, h, dx, dy)));
+      return c;
+    };
+    for (let dy = cyl - 2; dy <= cyl + 2; dy++) {
+      for (let dx = cxl - 2; dx <= cxl + 2; dx++) {
+        const c = at(dx, dy);
+        if (c < bc) {
+          bc = c;
+          bx = dx;
+          by = dy;
+        }
+      }
+    }
+    return { bx, by, sx: subpixel(at(bx - 1, by), bc, at(bx + 1, by)), sy: subpixel(at(bx, by - 1), bc, at(bx, by + 1)) };
+  };
+  const g1 = refine(1, gdx * 2, gdy * 2, L1.w, L1.h);
+  const g0 = refine(0, g1.bx * 2, g1.by * 2, L0.w, L0.h);
+  const gU = (g0.bx + g0.sx) / steps; // native px per 5 min
+  const gV = (g0.by + g0.sy) / steps;
+  // Block searches centre on the refined shift.
+  gdx = Math.round(g0.bx / 4);
+  gdy = Math.round(g0.by / 4);
 
   // ---- 2. Block search --------------------------------------------------
   const LOCAL = 5; // level-2 search radius around the global shift
@@ -252,6 +306,8 @@ export function estimateMotion(frames: RadarFrame[], clutter: Uint8Array | null)
         }
       }
       if (!cnt || !isFinite(best)) continue;
+      // A minimum on the edge of the search window is not a real match.
+      if (Math.abs(bdx - gdx) >= LOCAL || Math.abs(bdy - gdy) >= LOCAL) continue;
       const contrast = (sum / cnt - best) / (sum / cnt + 1e-6);
       if (contrast < 0.12) continue;
 
@@ -271,6 +327,7 @@ export function estimateMotion(frames: RadarFrame[], clutter: Uint8Array | null)
           }
         }
       }
+      if (Math.abs(fdx - bdx * 2) >= 2 || Math.abs(fdy - bdy * 2) >= 2) continue;
       const get = (dx: number, dy: number) =>
         costs.get(dx + ',' + dy) ?? pairCost(pairs, 1, x0, y0, x1, y1, dx, dy);
       const sx = subpixel(get(fdx - 1, fdy), fBest, get(fdx + 1, fdy));
@@ -321,12 +378,10 @@ export function estimateMotion(frames: RadarFrame[], clutter: Uint8Array | null)
     } else valid[idx] = 0;
   });
 
-  let globalU = (gdx * 4) / steps;
-  let globalV = (gdy * 4) / steps;
-  if (keptU.length >= 3) {
-    globalU = weightedMedian(keptU, keptW);
-    globalV = weightedMedian(keptV, keptW);
-  }
+  // The whole-domain match uses every echo at once, so it is the most robust
+  // steering estimate; block vectors describe local departures from it.
+  const globalU = gU;
+  const globalV = gV;
 
   // ---- 4. Gap filling & smoothing ----------------------------------------
   const sigma = 3.5;

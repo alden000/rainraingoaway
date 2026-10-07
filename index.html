@@ -49,6 +49,19 @@
 
       <aside class="panel" id="panel" aria-label="Rain details">
         <div class="sheet-grabber" id="sheet-grabber" aria-hidden="true"><span></span></div>
+        <!-- Phone summary strip: the essentials, visible even with the sheet closed. -->
+        <div class="peek" id="peek" role="button" tabindex="0" aria-label="Show rain details" data-tone="calm" data-press>
+          <div class="glyph peek__glyph" id="pk-glyph" aria-hidden="true"></div>
+          <div class="peek__main">
+            <div class="peek__row"><strong class="peek__title" id="pk-title">—</strong><span class="peek__place" id="pk-place">Locating…</span></div>
+            <div class="peek__next" id="pk-next">Reading the radar…</div>
+            <div class="peek__outlook" id="pk-outlook"></div>
+          </div>
+          <div class="peek__side">
+            <div class="peek__stat"><b id="pk-stat">—</b><span id="pk-stat-label">rain ≤30′</span></div>
+            <div class="peek__wind" id="pk-wind"><span class="peek__arrow" id="pk-arrow">↑</span><span id="pk-wind-text">—</span></div>
+          </div>
+        </div>
         <div class="panel__scroll" id="panel-scroll">
           <!-- HERO -->
           <section class="card hero" id="hero" data-tone="calm">
@@ -146,6 +159,7 @@
           </section>
 
           <footer class="credits">
+            <p class="muted small" id="build-tag"></p>
             <p>Radar © <a href="https://data.gov.sg" target="_blank" rel="noopener">NEA via data.gov.sg</a>, updated every 5 minutes. Forecasts are extrapolations of radar echoes and can miss showers that form from nothing.</p>
             <button class="link" id="about-open">How RainRain works</button>
           </footer>

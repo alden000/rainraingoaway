@@ -5,6 +5,7 @@
  */
 import { DISPLAY_FORECAST_STEPS, FRAME_MS, RANGES, type RadarRange } from '../config';
 import { coverageTrend, detectClutter, estimateMotion } from './motion';
+import { kmPerPixel } from './frameMath';
 import { advect, domainWind, pointForecast, type AnalysisState, type RangeState } from './nowcast';
 import type { AnalysisSummary, PointForecast, RadarFrame } from './types';
 
@@ -29,12 +30,20 @@ let state: AnalysisState | null = null;
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
-function rangeState(frames: RadarFrame[]): RangeState | null {
+function rangeState(frames: RadarFrame[], prior: RangeState | null): RangeState | null {
   if (!frames.length) return null;
   const sorted = [...frames].sort((a, b) => a.time - b.time);
   const clutter = detectClutter(sorted);
-  const motion = estimateMotion(sorted, clutter);
-  return { frame: sorted[sorted.length - 1], motion, clutter };
+  const latest = sorted[sorted.length - 1];
+  // Seed with the coarser range's steering flow when that estimate is trustworthy.
+  let p: { u: number; v: number } | null = null;
+  const pm = prior?.motion;
+  if (pm && pm.confidence >= 0.3) {
+    const s = kmPerPixel(pm.range, pm.width).kx / kmPerPixel(latest.range, latest.width).kx;
+    p = { u: pm.globalU * s, v: pm.globalV * s };
+  }
+  const motion = estimateMotion(sorted, clutter, p);
+  return { frame: latest, motion, clutter };
 }
 
 function regionCoverage(r: RangeState | undefined): number {
@@ -57,9 +66,14 @@ ctx.onmessage = (ev: MessageEvent<WorkerRequest>) => {
   try {
     if (msg.type === 'analyze') {
       const ranges: AnalysisState['ranges'] = {};
-      for (const r of RANGES) {
-        const rs = rangeState(msg.frames[r] ?? []);
-        if (rs) ranges[r] = rs;
+      // Coarse to fine: the wide, stable views constrain the detailed one.
+      let prior: RangeState | null = null;
+      for (const r of [...RANGES].reverse()) {
+        const rs = rangeState(msg.frames[r] ?? [], prior);
+        if (rs) {
+          ranges[r] = rs;
+          prior = rs;
+        }
       }
       const sorted70 = [...(msg.frames['70km'] ?? [])].sort((a, b) => a.time - b.time);
       const trend = sorted70.length ? coverageTrend(sorted70, ranges['70km']?.clutter ?? null) : 1;

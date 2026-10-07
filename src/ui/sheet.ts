@@ -15,7 +15,7 @@ export class BottomSheet {
 
   private safeProbe: HTMLElement;
 
-  constructor(private panel: HTMLElement, private scroller: HTMLElement, private grabber: HTMLElement, peekEl: HTMLElement) {
+  constructor(private panel: HTMLElement, private scroller: HTMLElement, private grabber: HTMLElement, private peekEl: HTMLElement) {
     // Measures env(safe-area-inset-bottom), which getComputedStyle can't resolve on a custom property.
     this.safeProbe = document.createElement('div');
     this.safeProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom,0px)';
@@ -48,10 +48,10 @@ export class BottomSheet {
 
   private visibleFor(d: Detent) {
     const H = this.height();
-    // Collapsed: only the drag handle shows, so the map gets the whole screen.
-    const peek = this.grabber.offsetHeight + this.safeProbe.offsetHeight;
+    // Collapsed: handle + summary strip, so the essentials stay visible over the map.
+    const peek = this.grabber.offsetHeight + this.peekEl.offsetHeight + 10 + this.safeProbe.offsetHeight;
     if (d === 'peek') return peek;
-    if (d === 'half') return Math.max(peek + 200, H * 0.55);
+    if (d === 'half') return Math.max(peek + 220, H * 0.6);
     return H;
   }
 

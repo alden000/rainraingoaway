@@ -1,9 +1,21 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execSync } from 'node:child_process';
+
+// Short commit + build time, shown in the app so it's easy to tell which version is running.
+const sha = (process.env.GITHUB_SHA ?? (() => {
+  try {
+    return execSync('git rev-parse HEAD').toString().trim();
+  } catch {
+    return 'dev';
+  }
+})()).slice(0, 7);
+const built = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
 
 export default defineConfig({
   // Relative base so the build works from any sub-path (e.g. GitHub Pages).
   base: './',
+  define: { __BUILD__: JSON.stringify(`${sha} · ${built}`) },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
   worker: { format: 'es' },
   plugins: [
