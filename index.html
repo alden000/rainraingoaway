@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>RainRain — Singapore Rain Radar</title>
+    <meta name="description" content="Hyperlocal rain radar for Singapore: is it raining on your 5 m square, when will it start, when will it stop." />
+    <meta name="theme-color" content="#070b14" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RainRain" />
+    <link rel="icon" href="./icons/logo.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://api-open.data.gov.sg" crossorigin />
+    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
+  </head>
+  <body>
+    <div id="app" class="app is-booting">
+      <div id="map" class="map" aria-label="Rain radar map" role="application"></div>
+      <div class="map-vignette" aria-hidden="true"></div>
+      <div class="forecast-veil" aria-hidden="true"><span>Forecast</span></div>
+
+      <header class="topbar">
+        <button class="brand glass" id="brand" data-haptic="selection" aria-label="About RainRain">
+          <span class="brand__mark" data-logo></span>
+          <span class="brand__name">Rain<em>Rain</em></span>
+          <span class="live" id="live" data-state="loading"><i></i><span id="live-text">Connecting</span></span>
+        </button>
+        <button class="search-trigger glass" id="search-open" aria-label="Search for a place">
+          <span data-icon="search"></span><span class="search-trigger__text">Search a place in Singapore</span>
+          <kbd>/</kbd>
+        </button>
+      </header>
+
+      <nav class="fab-stack" aria-label="Map controls">
+        <button class="fab glass" id="btn-layers" aria-label="Map layers and settings" data-haptic="light"><span data-icon="layers"></span></button>
+        <button class="fab glass" id="btn-locate" aria-label="Go to my location" data-haptic="medium"><span data-icon="locate"></span></button>
+        <div class="fab-zoom glass">
+          <button id="btn-zoom-in" aria-label="Zoom in" data-haptic="selection"><span data-icon="plus"></span></button>
+          <span class="fab-zoom__rule"></span>
+          <button id="btn-zoom-out" aria-label="Zoom out" data-haptic="selection"><span data-icon="minus"></span></button>
+        </div>
+      </nav>
+
+      <div class="grid-chip glass" id="grid-chip" aria-live="polite"><span data-icon="grid"></span><span id="grid-chip-text">Grid</span></div>
+      <div class="pick-hint glass" id="pick-hint">Tap anywhere on the map to check for rain there</div>
+
+      <aside class="panel" id="panel" aria-label="Rain details">
+        <div class="sheet-grabber" id="sheet-grabber" aria-hidden="true"><span></span></div>
+        <div class="panel__scroll" id="panel-scroll">
+          <!-- HERO -->
+          <section class="card hero" id="hero" data-tone="calm">
+            <canvas class="hero__fx" id="hero-fx" aria-hidden="true"></canvas>
+            <div class="hero__aura" aria-hidden="true"></div>
+            <div class="hero__top">
+              <div class="hero__place">
+                <span class="eyebrow" id="spot-kind"><span data-icon="navigation"></span>Your location</span>
+                <h1 class="hero__name" id="spot-name">Locating…</h1>
+                <div class="hero__meta">
+                  <span class="mono" id="cell-id">—</span>
+                  <span class="tag" id="cell-size">5 m cell</span>
+                </div>
+              </div>
+              <button class="icon-btn" id="save-spot" aria-label="Save this place" data-haptic="success"><span data-icon="star"></span></button>
+            </div>
+            <div class="hero__now">
+              <div class="glyph" id="glyph" data-kind="none" aria-hidden="true"></div>
+              <div class="hero__reading">
+                <div class="hero__title" id="now-title"><span>—</span></div>
+                <div class="hero__rate"><span id="now-rate">Reading the radar…</span></div>
+              </div>
+            </div>
+            <p class="hero__headline" id="headline">&nbsp;</p>
+            <div class="hero__actions">
+              <button class="chip chip--accent" id="back-to-me" hidden><span data-icon="navigation"></span>Back to my location</button>
+              <button class="chip" id="pick-mode"><span data-icon="pin"></span>Check another spot</button>
+            </div>
+          </section>
+
+          <!-- FORECAST CHART -->
+          <section class="card" id="chart-card">
+            <header class="card__head">
+              <h2>Next 3 hours</h2>
+              <span class="muted" id="issued">—</span>
+            </header>
+            <div class="chart" id="chart"></div>
+            <div class="chart-legend">
+              <span><i class="sw sw--prob"></i>Chance of rain</span>
+              <span><i class="sw sw--rate"></i>Intensity if it rains</span>
+            </div>
+          </section>
+
+          <!-- INSIGHTS -->
+          <section class="duo">
+            <article class="card insight" id="insight-next">
+              <span class="eyebrow"><span data-icon="clock"></span>Next 30 min</span>
+              <div class="insight__ring" id="next-ring"></div>
+              <strong class="insight__title" id="next-title">—</strong>
+              <p class="insight__detail" id="next-detail"></p>
+            </article>
+            <article class="card insight" id="insight-outlook">
+              <span class="eyebrow"><span data-icon="sparkle"></span>Beyond 30 min</span>
+              <div class="insight__ring" id="outlook-ring"></div>
+              <strong class="insight__title" id="outlook-title">—</strong>
+              <p class="insight__detail" id="outlook-detail"></p>
+            </article>
+          </section>
+
+          <!-- WIND -->
+          <section class="card wind" id="wind-card">
+            <header class="card__head">
+              <h2>Steering wind</h2>
+              <span class="pill" id="wind-conf">—</span>
+            </header>
+            <div class="wind__body">
+              <div class="compass" id="compass"></div>
+              <div class="wind__stats">
+                <div class="wind__speed"><span class="num" id="wind-speed">—</span><span class="unit">km/h</span></div>
+                <div class="wind__dir" id="wind-dir">—</div>
+                <p class="wind__sentence" id="wind-sentence"></p>
+                <div class="wind__local" id="wind-local"></div>
+              </div>
+            </div>
+            <p class="footnote">Estimated from how rain echoes drift between radar scans — representative of the wind a few kilometres up that steers showers, not gusts at street level.</p>
+          </section>
+
+          <!-- NEARBY -->
+          <section class="card nearby" id="nearby-card">
+            <header class="card__head"><h2>Around you</h2><span class="muted" id="coverage">—</span></header>
+            <div class="nearby__body">
+              <div class="scope" id="scope"></div>
+              <div class="nearby__text">
+                <strong id="nearest-title">—</strong>
+                <p id="nearest-detail"></p>
+                <p class="muted small" id="trend-text"></p>
+              </div>
+            </div>
+          </section>
+
+          <!-- SAVED -->
+          <section class="card places" id="places-card">
+            <header class="card__head"><h2>Saved places</h2><span class="muted" id="places-count"></span></header>
+            <ul class="places__list" id="places-list"></ul>
+          </section>
+
+          <footer class="credits">
+            <p>Radar © <a href="https://data.gov.sg" target="_blank" rel="noopener">NEA via data.gov.sg</a>, updated every 5 minutes. Forecasts are extrapolations of radar echoes and can miss showers that form from nothing.</p>
+            <button class="link" id="about-open">How RainRain works</button>
+          </footer>
+        </div>
+      </aside>
+
+      <div class="timeline glass" id="timeline">
+        <button class="tl-play" id="tl-play" aria-label="Play radar loop" data-haptic="medium"><span data-icon="play"></span></button>
+        <div class="tl-body">
+          <div class="tl-labels">
+            <strong id="tl-time">--:--</strong>
+            <span id="tl-rel" class="tl-rel">Now</span>
+          </div>
+          <div class="tl-track" id="tl-track" role="slider" tabindex="0" aria-label="Radar time" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+            <div class="tl-rail"><div class="tl-past"></div><div class="tl-future"></div></div>
+            <div class="tl-ticks" id="tl-ticks"></div>
+            <div class="tl-now" id="tl-now"><span>Now</span></div>
+            <div class="tl-thumb" id="tl-thumb"></div>
+          </div>
+        </div>
+        <div class="tl-legend" id="tl-legend" aria-hidden="true"></div>
+      </div>
+
+      <div class="toasts" id="toasts" aria-live="polite"></div>
+
+      <!-- SEARCH -->
+      <div class="modal" id="search-modal" role="dialog" aria-modal="true" aria-label="Search" hidden>
+        <div class="modal__scrim" data-close></div>
+        <div class="modal__card modal__card--search">
+          <div class="search-box">
+            <span data-icon="search"></span>
+            <input id="search-input" type="search" placeholder="Places, buildings, postal codes" autocomplete="off" enterkeyhint="search" />
+            <button class="icon-btn" data-close aria-label="Close"><span data-icon="close"></span></button>
+          </div>
+          <ul class="search-results" id="search-results"></ul>
+          <p class="search-foot">Place search by OneMap · Singapore Land Authority. Only what you type is sent.</p>
+        </div>
+      </div>
+
+      <!-- LAYERS / SETTINGS -->
+      <div class="modal" id="layers-modal" role="dialog" aria-modal="true" aria-label="Layers and settings" hidden>
+        <div class="modal__scrim" data-close></div>
+        <div class="modal__card modal__card--sheet">
+          <header class="modal__head"><h2>Layers &amp; settings</h2><button class="icon-btn" data-close aria-label="Close"><span data-icon="close"></span></button></header>
+          <div class="modal__body">
+            <h3 class="section-label">Basemap</h3>
+            <div class="option-grid" id="opt-basemap">
+              <button class="option" data-value="auto"><i class="swatch swatch--auto"></i><span>Auto</span></button>
+              <button class="option" data-value="midnight"><i class="swatch swatch--midnight"></i><span>Midnight</span></button>
+              <button class="option" data-value="daylight"><i class="swatch swatch--daylight"></i><span>Daylight</span></button>
+              <button class="option" data-value="satellite"><i class="swatch swatch--satellite"></i><span>Satellite</span></button>
+            </div>
+            <h3 class="section-label">Radar colours</h3>
+            <div class="option-grid option-grid--2" id="opt-palette">
+              <button class="option" data-value="signature"><i class="ramp ramp--signature"></i><span>Signature</span></button>
+              <button class="option" data-value="classic"><i class="ramp ramp--classic"></i><span>NEA classic</span></button>
+            </div>
+            <label class="slider-row">
+              <span>Radar opacity</span>
+              <input type="range" id="opt-opacity" min="30" max="100" step="5" />
+              <output id="opt-opacity-out"></output>
+            </label>
+            <h3 class="section-label">Grid cell size</h3>
+            <div class="segmented" id="opt-cell">
+              <button data-value="5">5 m</button><button data-value="10">10 m</button><button data-value="25">25 m</button><button data-value="100">100 m</button>
+            </div>
+            <h3 class="section-label">Overlays &amp; feel</h3>
+            <div class="toggles">
+              <label class="toggle"><span data-icon="wind"></span><span>Wind flow</span><input type="checkbox" switch id="opt-wind" /></label>
+              <label class="toggle"><span data-icon="grid"></span><span>Analysis grid</span><input type="checkbox" switch id="opt-grid" /></label>
+              <label class="toggle"><span data-icon="sparkle"></span><span>Forecast in playback</span><input type="checkbox" switch id="opt-forecast" /></label>
+              <label class="toggle"><span data-icon="vibrate"></span><span>Haptics</span><input type="checkbox" switch id="opt-haptics" /></label>
+              <label class="toggle"><span data-icon="sound"></span><span>Interface sounds</span><input type="checkbox" switch id="opt-sound" /></label>
+            </div>
+            <button class="btn btn--primary" id="install-btn" hidden><span data-icon="download"></span>Install RainRain</button>
+            <p class="muted small" id="install-ios" hidden>To install on iPhone or iPad: tap Share, then “Add to Home Screen”.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ABOUT -->
+      <div class="modal" id="about-modal" role="dialog" aria-modal="true" aria-label="About" hidden>
+        <div class="modal__scrim" data-close></div>
+        <div class="modal__card modal__card--sheet">
+          <header class="modal__head"><h2>How RainRain works</h2><button class="icon-btn" data-close aria-label="Close"><span data-icon="close"></span></button></header>
+          <div class="modal__body prose">
+            <p><strong>The radar.</strong> Every five minutes NEA's weather radar at Changi publishes a rain-intensity image. RainRain downloads the 70 km image (≈290 m pixels) for detail over Singapore and the 240 km image (≈1 km pixels) to see rain approaching from further away.</p>
+            <p><strong>Your 5 m square.</strong> The map is divided into 5 × 5 m cells aligned to Singapore's SVY21 national grid. Your cell's reading is interpolated from the surrounding radar pixels, so the answer changes smoothly as you move. The radar itself can't resolve 5 m, so neighbouring cells usually agree.</p>
+            <p><strong>Tracking & forecasting.</strong> Successive scans are block-matched to measure how each part of the rain field is moving. The latest scan is then carried forward along that motion (semi-Lagrangian extrapolation), with growth or decay taken from the recent trend. Uncertainty widens with lead time, which is why the forecast shows a <em>chance</em> of rain rather than a yes/no.</p>
+            <p><strong>Beyond 30 minutes.</strong> RainRain follows the flow upwind across the 240 km image to find the next band of rain headed your way and estimates when it will arrive.</p>
+            <p><strong>Wind.</strong> The motion of rain echoes reveals the wind that steers them, typically 1–3 km above ground. It is only available while there is rain to track.</p>
+            <p><strong>Ground clutter.</strong> Echoes that sit perfectly still scan after scan are flagged as non-weather and ignored.</p>
+            <p><strong>Privacy.</strong> Your location never leaves your device. Place names come from a built-in gazetteer; only search text you type is sent to OneMap.</p>
+            <p class="muted small">Radar data: National Environment Agency via data.gov.sg (Singapore Open Data Licence). Basemap: OpenFreeMap / OpenMapTiles / © OpenStreetMap contributors. Imagery: Esri.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- SPLASH -->
+      <div class="splash" id="splash" aria-hidden="true">
+        <div class="splash__scope">
+          <div class="splash__ring r1"></div><div class="splash__ring r2"></div><div class="splash__ring r3"></div>
+          <div class="splash__cross"></div>
+          <div class="splash__sweep"></div>
+          <i class="blip b1"></i><i class="blip b2"></i><i class="blip b3"></i><i class="blip b4"></i>
+        </div>
+        <div class="splash__brand">
+          <div class="splash__logo" data-logo></div>
+          <h1>Rain<em>Rain</em></h1>
+          <p>Singapore's rain, to the square.</p>
+        </div>
+        <div class="splash__status">
+          <span id="splash-step">Contacting the NEA radar…</span>
+          <div class="splash__bar"><i id="splash-bar"></i></div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
