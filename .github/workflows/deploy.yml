@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [main, claude/singapore-weather-radar-pwa-vhgluc]
   workflow_dispatch:
 
 permissions:
