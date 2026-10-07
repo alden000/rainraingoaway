@@ -15,7 +15,7 @@ import { RadarMap } from './map/radarMap';
 import { RadarRenderer, type DisplayFrame } from './map/radarRenderer';
 import type { BasemapId } from './map/style';
 import { WindLayer } from './map/windLayer';
-import { cachedFrames, listLatest, listRecent, loadFrames, pruneCache } from './radar/api';
+import { cachedFrames, listLatest, listRecent, loadFrame, loadFrames, pruneCache, type ScanRef } from './radar/api';
 import type { WorkerRequest, WorkerResponse } from './radar/analysis.worker';
 import { geoToPixel, sampleRate } from './radar/frameMath';
 import {
@@ -71,7 +71,14 @@ const SETTINGS = persisted<Settings>('rainrain.settings', {
   haptics: true, sound: false, cellSize: DEFAULT_CELL_M
 });
 const SAVED = persisted<{ places: SavedPlace[] }>('rainrain.saved', { places: [] });
-const POLL_MS = 60_000;
+/**
+ * NEA publishes a scan every 5 minutes, ~10–30 s after the scan's timestamp.
+ * We sleep until the next one is due, then retry briefly if it's late — about
+ * one request per scan instead of one a minute.
+ */
+const NEXT_SCAN_DUE_MS = FRAME_MS + 20_000;
+const RETRY_MS = 30_000;
+const MAX_WAIT_MS = 5 * 60_000;
 const STEP_MS = 420;
 
 export class App {
@@ -109,6 +116,7 @@ export class App {
   private playing = false;
   private playRaf = 0;
   private refreshing: Promise<void> | null = null;
+  private pollTimer = 0;
   private gridTimer = 0;
   private pointsSeq = 0;
   private installEvt: (Event & { prompt(): Promise<void> }) | null = null;
@@ -144,7 +152,7 @@ export class App {
     this.splash(1, 'Ready');
     setTimeout(() => this.finishSplash(), 380);
 
-    setInterval(() => this.poll(), POLL_MS);
+    this.schedulePoll();
     setInterval(() => this.updateFreshness(), 20_000);
     document.addEventListener('visibilitychange', () => !document.hidden && this.poll());
     window.addEventListener('online', () => this.poll());
@@ -177,6 +185,47 @@ export class App {
   }
 
   /* ---- Data ------------------------------------------------------------ */
+  /** Frames currently held per range, oldest first. */
+  private held: Partial<Record<RadarRange, RadarFrame[]>> = {};
+
+  /**
+   * Routine update: fetch just the newest scan of each range and append it,
+   * instead of re-listing two hours of history.
+   */
+  private async update(latest70: ScanRef): Promise<void> {
+    if (this.refreshing) return this.refreshing;
+    let needFull = false;
+    this.refreshing = (async () => {
+      try {
+        const refs = await Promise.all(RANGES.map((r) => (r === '70km' ? latest70 : listLatest(r).catch(() => null))));
+        const next: Partial<Record<RadarRange, RadarFrame[]>> = {};
+        await Promise.all(
+          RANGES.map(async (r, i) => {
+            const have = this.held[r] ?? [];
+            const ref = refs[i];
+            const fresh = ref && !have.some((f) => f.time === ref.time) ? await loadFrame(ref).catch(() => null) : null;
+            const merged = fresh ? [...have, fresh].sort((a, b) => a.time - b.time) : have;
+            next[r] = merged.slice(-HISTORY_FRAMES);
+          })
+        );
+        // A gap (e.g. the phone slept) means the history is stale: re-list it fully.
+        const f70 = next['70km'] ?? [];
+        needFull = f70.length >= 2 && f70[f70.length - 1].time - f70[f70.length - 2].time > 2 * FRAME_MS;
+        if (!needFull) {
+          await this.ingest(next);
+          this.setStatus('live');
+        }
+      } catch (err) {
+        console.warn('Radar update failed', err);
+        this.setStatus(navigator.onLine ? 'stale' : 'offline');
+      } finally {
+        this.refreshing = null;
+      }
+    })();
+    await this.refreshing;
+    if (needFull) await this.refresh();
+  }
+
   private async refresh(): Promise<void> {
     if (this.refreshing) return this.refreshing;
     this.refreshing = (async () => {
@@ -206,23 +255,38 @@ export class App {
     return this.refreshing;
   }
 
+  /** Time the next check for when NEA's next scan should be out. */
+  private schedulePoll() {
+    clearTimeout(this.pollTimer);
+    const latest = this.frames70[this.frames70.length - 1]?.time ?? 0;
+    const due = latest + NEXT_SCAN_DUE_MS - Date.now();
+    const wait = due > 0 ? Math.min(due, MAX_WAIT_MS) : RETRY_MS;
+    this.pollTimer = window.setTimeout(() => void this.poll(), wait);
+  }
+
   private async poll() {
-    if (document.hidden || this.refreshing) return;
+    // Paused while hidden; visibilitychange triggers a fresh poll on return.
+    if (document.hidden) return;
+    if (this.refreshing) return void this.refreshing.finally(() => this.schedulePoll());
     try {
       const latest = await listLatest('70km');
       const have = this.frames70[this.frames70.length - 1]?.time ?? 0;
       if (latest && latest.time > have) {
-        await this.refresh();
+        // Small step forward → incremental update; otherwise reload the history.
+        if (have && latest.time - have <= 2 * FRAME_MS) await this.update(latest);
+        else await this.refresh();
         if (latest.time > have && have) haptic('selection');
       } else this.updateFreshness();
     } catch {
       if (!navigator.onLine) this.setStatus('offline');
     }
+    this.schedulePoll();
   }
 
   private async ingest(frames: Partial<Record<RadarRange, RadarFrame[]>>) {
     const f70 = frames['70km'] ?? [];
     if (!f70.length) return;
+    this.held = frames;
     const latestOld = this.frames70[this.frames70.length - 1]?.time;
     this.frames70 = f70;
     const id = ++this.reqId;

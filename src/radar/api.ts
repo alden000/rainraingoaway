@@ -59,6 +59,7 @@ export async function listRecent(range: RadarRange, count: number, signal?: Abor
   const out = new Map<number, ScanRef>();
   const oldest = now - (count + 1) * FRAME_MS;
   for (const day of new Set([sgtDate(now), sgtDate(oldest)])) {
+    if (out.size >= count) break;
     let token: string | null | undefined;
     let pages = 0;
     do {
@@ -69,8 +70,8 @@ export async function listRecent(range: RadarRange, count: number, signal?: Abor
       refs.forEach((r) => out.set(r.time, r));
       token = json.data?.paginationToken;
       pages++;
-      // Pages are newest-first: stop once we've reached far enough back.
-      if (refs.length && Math.min(...refs.map((r) => r.time)) <= oldest) break;
+      // Pages are newest-first: stop once we have enough scans or reached far enough back.
+      if (out.size >= count || (refs.length && Math.min(...refs.map((r) => r.time)) <= oldest)) break;
     } while (token && pages < 4);
   }
   return [...out.values()].sort((a, b) => b.time - a.time).slice(0, count);

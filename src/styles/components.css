@@ -333,6 +333,6 @@ input[type='range']::-moz-range-thumb { width: 22px; height: 22px; border: 0; bo
 .splash h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(48px, 9vw, 84px); letter-spacing: -0.04em; line-height: 1; font-variation-settings: 'opsz' 144, 'SOFT' 100; }
 .splash h1 em { font-style: italic; background: linear-gradient(120deg, #7dd3fc, #818cf8 55%, #e879f9); -webkit-background-clip: text; background-clip: text; color: transparent; padding-right: 6px; }
 .splash p { margin-top: 12px; color: #9aa6c8; font-size: 16px; letter-spacing: 0.01em; }
-.splash__status { position: absolute; bottom: calc(var(--safe-bottom) + 56px); left: 50%; transform: translateX(-50%); width: min(320px, 80vw); text-align: center; font-size: 13px; color: #9aa6c8; animation: fade-up 1s var(--ease-out) 0.5s both; }
+.splash__status { position: absolute; bottom: calc(var(--safe-bottom) + 56px); left: 0; right: 0; margin: 0 auto; width: min(320px, 80vw); text-align: center; font-size: 13px; color: #9aa6c8; animation: fade-up 1s var(--ease-out) 0.5s both; }
 .splash__bar { margin-top: 12px; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
 .splash__bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7dd3fc, #818cf8, #e879f9); border-radius: 3px; transition: width 0.8s var(--ease-out); }
