@@ -13,7 +13,13 @@ export class BottomSheet {
   private mq = matchMedia('(max-width: 899px)');
   private listeners = new Set<(d: Detent) => void>();
 
-  constructor(private panel: HTMLElement, private scroller: HTMLElement, private grabber: HTMLElement, private peekEl: HTMLElement) {
+  private safeProbe: HTMLElement;
+
+  constructor(private panel: HTMLElement, private scroller: HTMLElement, private grabber: HTMLElement, peekEl: HTMLElement) {
+    // Measures env(safe-area-inset-bottom), which getComputedStyle can't resolve on a custom property.
+    this.safeProbe = document.createElement('div');
+    this.safeProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;height:env(safe-area-inset-bottom,0px)';
+    document.body.appendChild(this.safeProbe);
     this.mq.addEventListener('change', () => this.sync());
     window.addEventListener('resize', () => this.layout(false));
     new ResizeObserver(() => this.layout(false)).observe(peekEl);
@@ -42,9 +48,10 @@ export class BottomSheet {
 
   private visibleFor(d: Detent) {
     const H = this.height();
-    const peek = Math.min(H * 0.55, this.grabber.offsetHeight + this.peekEl.offsetHeight + 14);
+    // Collapsed: only the drag handle shows, so the map gets the whole screen.
+    const peek = this.grabber.offsetHeight + this.safeProbe.offsetHeight;
     if (d === 'peek') return peek;
-    if (d === 'half') return Math.max(peek + 80, H * 0.62);
+    if (d === 'half') return Math.max(peek + 200, H * 0.55);
     return H;
   }
 

@@ -128,7 +128,7 @@
     -webkit-backdrop-filter: blur(28px) saturate(180%);
     backdrop-filter: blur(28px) saturate(180%);
     border-top: 1px solid var(--line-strong);
-    border-radius: 30px 30px 0 0;
+    border-radius: 22px 22px 0 0;
     box-shadow: 0 -24px 60px -20px rgba(0, 0, 0, 0.55);
     transform: translate3d(0, var(--sheet-y, 60%), 0);
     transition: transform 0.6s var(--ease-sheet);
@@ -161,21 +161,11 @@
   .tl-rail { top: 9px; }
   .tl-thumb { top: 11px; width: 18px; height: 18px; margin: -9px 0 0 -9px; }
   .tl-ticks b { bottom: -9px; font-size: 9px; }
-  .sheet-grabber { height: 20px; }
+  /* Collapsed sheet = just this handle: a generous touch target with a clear bar. */
+  .sheet-grabber { height: 30px; }
+  .sheet-grabber span { width: 48px; height: 5px; opacity: 1; transition: width 0.4s var(--ease-spring), background 0.3s; }
+  .panel.is-peek .sheet-grabber span { width: 56px; background: var(--ink-3); }
 
-  /* Condensed hero while the sheet is peeking: just place, status and the headline. */
-  .panel.is-peek .hero { padding: 12px 16px 14px; min-height: 0; }
-  .panel.is-peek .hero .eyebrow,
-  .panel.is-peek .hero__meta,
-  .panel.is-peek .hero__actions,
-  .panel.is-peek .hero__rate { display: none; }
-  .panel.is-peek .hero__top { align-items: center; }
-  .panel.is-peek .hero__name { margin-top: 0; font-size: 19px; }
-  .panel.is-peek .hero .icon-btn { width: 34px; height: 34px; }
-  .panel.is-peek .hero__now { margin-top: 4px; gap: 10px; }
-  .panel.is-peek .glyph { width: 40px; height: 42px; }
-  .panel.is-peek .hero__title { font-size: 34px; height: 44px; padding-bottom: 8px; margin-bottom: -8px; }
-  .panel.is-peek .hero__headline { margin-top: 6px; font-size: 14px; padding-left: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* ---- Cards --------------------------------------------------------------*/
