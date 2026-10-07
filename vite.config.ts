@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execSync } from 'node:child_process';
+import type { Plugin } from 'vite';
 
 // Short commit + build time, shown in the app so it's easy to tell which version is running.
 const sha = (process.env.GITHUB_SHA ?? (() => {
@@ -15,10 +16,14 @@ const built = new Date().toLocaleString('en-SG', { timeZone: 'Asia/Singapore', d
 export default defineConfig({
   // Relative base so the build works from any sub-path (e.g. GitHub Pages).
   base: './',
-  define: { __BUILD__: JSON.stringify(`${sha} · ${built}`) },
+  define: {
+    __BUILD__: JSON.stringify(`${sha} · ${built}`),
+    __BUILD_SHA__: JSON.stringify(sha)
+  },
   build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
   worker: { format: 'es' },
   plugins: [
+    versionFile(),
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
@@ -84,3 +89,13 @@ export default defineConfig({
     })
   ]
 });
+
+/** Emits version.json so running copies can tell when a newer build is deployed. */
+function versionFile(): Plugin {
+  return {
+    name: 'rainrain-version-file',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ build: sha, built }) });
+    }
+  };
+}

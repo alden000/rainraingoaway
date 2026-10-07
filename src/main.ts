@@ -1,6 +1,7 @@
 import './styles/index.css';
 import { registerSW } from 'virtual:pwa-register';
 import { App } from './app';
+import { watchForUpdates } from './lib/updates';
 
 const app = new App();
 // Opt-in handle for debugging/tests: add ?debug to the URL.
@@ -13,3 +14,4 @@ app.start().catch((err) => {
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   registerSW({ immediate: true });
 }
+if (import.meta.env.PROD) watchForUpdates();
