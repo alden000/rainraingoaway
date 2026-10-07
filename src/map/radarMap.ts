@@ -44,6 +44,8 @@ export class RadarMap {
   private gridVisible = true;
   private basemap: BasemapId;
   private repaintTimer = 0;
+  /** True during timeline playback: radar textures must re-upload every frame. */
+  private animating = false;
   readonly ready: Promise<void>;
 
   constructor(opts: MapOptions) {
@@ -223,11 +225,13 @@ export class RadarMap {
     srcs.forEach((s) => s.play());
     this.map.triggerRepaint();
     clearTimeout(this.repaintTimer);
-    this.repaintTimer = window.setTimeout(() => srcs.forEach((s) => s.pause()), 120);
+    // Never pause mid-playback (e.g. after a basemap switch re-creates the sources).
+    this.repaintTimer = window.setTimeout(() => !this.animating && srcs.forEach((s) => s.pause()), 120);
   }
 
   /** Continuous upload while animating (timeline playback). */
   setRadarAnimating(on: boolean) {
+    this.animating = on;
     const srcs = this.radarSources();
     if (!srcs.length) return;
     clearTimeout(this.repaintTimer);

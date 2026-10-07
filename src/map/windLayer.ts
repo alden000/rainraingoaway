@@ -12,6 +12,8 @@ interface Particle {
   y: number;
   age: number;
   life: number;
+  /** Phase of the gentle side-to-side drift that keeps paths from looking like falling rain. */
+  phase: number;
 }
 
 const CELL = 24; // screen-space velocity lattice spacing
@@ -45,7 +47,7 @@ export class WindLayer {
   }
 
   setTheme(dark: boolean) {
-    this.tint = dark ? '167,139,250' : '79,70,229';
+    this.tint = dark ? '216,206,255' : '79,70,229';
   }
 
   setFields(fields: MotionField[]) {
@@ -88,21 +90,22 @@ export class WindLayer {
           const { kx, ky } = kmPerPixel(f.range, f.width);
           const [u, v] = motionAt(f, p.x, p.y);
           // km per 5 min → screen px per animation frame (stylised but proportional).
-          this.vel[i] = u * kx * 0.9;
-          this.vel[i + 1] = v * ky * 0.9;
+          this.vel[i] = u * kx * 0.55;
+          this.vel[i + 1] = v * ky * 0.55;
           break;
         }
       }
     }
-    const target = Math.round(Math.min(520, (w * h) / 2600));
+    // Sparse motes read as drifting air; dense streaks read as rain.
+    const target = Math.round(Math.min(260, (w * h) / 5200));
     this.particles = Array.from({ length: target }, () => this.spawn(w, h, true));
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     this.start();
   }
 
   private spawn(w: number, h: number, randomAge = false): Particle {
-    const life = 90 + Math.random() * 140;
-    return { x: Math.random() * w, y: Math.random() * h, age: randomAge ? Math.random() * life : 0, life };
+    const life = 140 + Math.random() * 180;
+    return { x: Math.random() * w, y: Math.random() * h, age: randomAge ? Math.random() * life : 0, life, phase: Math.random() * Math.PI * 2 };
   }
 
   private sample(x: number, y: number): [number, number] {
@@ -140,26 +143,33 @@ export class WindLayer {
     const w = this.canvas.width / dpr;
     const h = this.canvas.height / dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // Fade previous trails.
+    // Fade quickly so each mote leaves only a short comet tail.
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(0,0,0,0.045)';
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
     ctx.fillRect(0, 0, w, h);
     ctx.globalCompositeOperation = 'source-over';
-    ctx.lineWidth = 0.9;
     ctx.lineCap = 'round';
     for (const p of this.particles) {
       const [u, v] = this.sample(p.x, p.y);
       const speed = Math.hypot(u, v);
-      const nx = p.x + u;
-      const ny = p.y + v;
+      // Meander gently across the flow so paths curve instead of falling in straight lines.
+      const wobble = Math.sin(p.age * 0.06 + p.phase) * 0.35;
+      const nx = p.x + u - v * wobble;
+      const ny = p.y + v + u * wobble;
       const lifeT = p.age / p.life;
-      const alpha = Math.sin(Math.PI * Math.min(1, lifeT)) * Math.min(0.6, 0.18 + speed * 0.3);
+      const alpha = Math.sin(Math.PI * Math.min(1, lifeT)) * Math.min(0.85, 0.35 + speed * 0.5);
       if (speed > 0.02) {
-        ctx.strokeStyle = `rgba(${this.tint},${alpha.toFixed(3)})`;
+        ctx.strokeStyle = `rgba(${this.tint},${(alpha * 0.45).toFixed(3)})`;
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(p.x, p.y);
         ctx.lineTo(nx, ny);
         ctx.stroke();
+        // Glowing head.
+        ctx.fillStyle = `rgba(${this.tint},${alpha.toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(nx, ny, 1.5, 0, Math.PI * 2);
+        ctx.fill();
       }
       p.x = nx;
       p.y = ny;
