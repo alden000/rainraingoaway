@@ -38,37 +38,73 @@ function trendLut(trend: number, k: number): Uint8Array {
   return lut;
 }
 
+/** Trajectory lattice spacing (px). The motion field is smooth on ~24 px blocks, so tracing every 4th pixel and interpolating is visually identical and ~10x cheaper. */
+const LATTICE = 4;
+
 /** Produce forecast rasters (levels) for k = 1..steps. */
 export function advect(state: RangeState, steps: number, trend: number): Uint8Array[] {
   const { frame, motion, clutter } = state;
   const { width: W, height: H, levels } = frame;
   const N = W * H;
-  const px = new Float32Array(N);
-  const py = new Float32Array(N);
-  for (let y = 0, i = 0; y < H; y++) for (let x = 0; x < W; x++, i++) {
-    px[i] = x + 0.5;
-    py[i] = y + 0.5;
-  }
   const src = new Uint8Array(N);
   for (let i = 0; i < N; i++) src[i] = clutter && clutter[i] ? 0 : levels[i];
+
+  // Back-trajectories for lattice nodes at pixel centres (i*L + 0.5, j*L + 0.5).
+  const gw = Math.floor((W - 1) / LATTICE) + 2;
+  const gh = Math.floor((H - 1) / LATTICE) + 2;
+  const G = gw * gh;
+  const ox = new Float32Array(G);
+  const oy = new Float32Array(G);
+  const gx = new Float32Array(G);
+  const gy = new Float32Array(G);
+  for (let j = 0, n = 0; j < gh; j++) {
+    for (let i = 0; i < gw; i++, n++) {
+      gx[n] = ox[n] = i * LATTICE + 0.5;
+      gy[n] = oy[n] = j * LATTICE + 0.5;
+    }
+  }
+  const dx = new Float32Array(G);
+  const dy = new Float32Array(G);
+
+  // Per-column/row interpolation indices and weights, reused every step.
+  const ci = new Int32Array(W), cw = new Float32Array(W);
+  for (let x = 0; x < W; x++) {
+    ci[x] = Math.floor(x / LATTICE);
+    cw[x] = (x % LATTICE) / LATTICE;
+  }
+  const ri = new Int32Array(H), rw = new Float32Array(H);
+  for (let y = 0; y < H; y++) {
+    ri[y] = Math.floor(y / LATTICE);
+    rw[y] = (y % LATTICE) / LATTICE;
+  }
 
   const out: Uint8Array[] = [];
   for (let k = 1; k <= steps; k++) {
     const lut = trendLut(trend, k);
-    const dst = new Uint8Array(N);
-    for (let i = 0; i < N; i++) {
-      let u = 0, v = 0;
-      if (motion) {
+    if (motion) {
+      for (let n = 0; n < G; n++) {
         // Midpoint (RK2) back-trajectory step.
-        const [u1, v1] = motionAt(motion, px[i], py[i]);
-        [u, v] = motionAt(motion, px[i] - u1 / 2, py[i] - v1 / 2);
+        const [u1, v1] = motionAt(motion, gx[n], gy[n]);
+        const [u, v] = motionAt(motion, gx[n] - u1 / 2, gy[n] - v1 / 2);
+        gx[n] -= u;
+        gy[n] -= v;
+        dx[n] = gx[n] - ox[n];
+        dy[n] = gy[n] - oy[n];
       }
-      const x = (px[i] -= u);
-      const y = (py[i] -= v);
-      const xi = x | 0;
-      const yi = y | 0;
-      if (x < 0 || y < 0 || xi >= W || yi >= H) continue;
-      dst[i] = lut[src[yi * W + xi]];
+    }
+    const dst = new Uint8Array(N);
+    for (let y = 0, i = 0; y < H; y++) {
+      const r0 = ri[y] * gw, r1 = r0 + gw, ty = rw[y], sy = 1 - ty;
+      for (let x = 0; x < W; x++, i++) {
+        const c = ci[x], tx = cw[x], sx = 1 - tx;
+        const a = r0 + c, b = a + 1, d = r1 + c, e = d + 1;
+        const px = x + 0.5 + (dx[a] * sx + dx[b] * tx) * sy + (dx[d] * sx + dx[e] * tx) * ty;
+        const py = y + 0.5 + (dy[a] * sx + dy[b] * tx) * sy + (dy[d] * sx + dy[e] * tx) * ty;
+        const xi = px | 0;
+        const yi = py | 0;
+        if (px < 0 || py < 0 || xi >= W || yi >= H) continue;
+        dst[i] = lut[src[yi * W + xi]];
+      }
     }
     out.push(dst);
   }

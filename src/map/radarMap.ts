@@ -46,6 +46,8 @@ export class RadarMap {
   private repaintTimer = 0;
   /** True during timeline playback: radar textures must re-upload every frame. */
   private animating = false;
+  /** Ranges that need per-frame texture uploads during playback (the ones on screen). */
+  private animatedRanges = new Set<RadarRange>(RANGES);
   readonly ready: Promise<void>;
 
   constructor(opts: MapOptions) {
@@ -215,8 +217,37 @@ export class RadarMap {
   }
 
   /** Push the latest canvas contents to the GPU. */
-  private radarSources(): CanvasSource[] {
-    return RANGES.map((r) => this.map.getSource(`radar-${r}`) as CanvasSource | undefined).filter((s): s is CanvasSource => !!s);
+  private radarSources(only?: Set<RadarRange>): CanvasSource[] {
+    return RANGES.filter((r) => !only || only.has(r))
+      .map((r) => this.map.getSource(`radar-${r}`) as CanvasSource | undefined)
+      .filter((s): s is CanvasSource => !!s);
+  }
+
+  /** Radar ranges with any part showing in the viewport (outside the finer range drawn on top). */
+  visibleRanges(): Set<RadarRange> {
+    const v = this.bounds();
+    const out = new Set<RadarRange>();
+    RANGES.forEach((r, i) => {
+      const b = RADAR_BBOX[r];
+      const overlaps = v.west < b.east && v.east > b.west && v.south < b.north && v.north > b.south;
+      const inner = RANGES[i - 1] && RADAR_BBOX[RANGES[i - 1]];
+      const hiddenByInner = !!inner && v.west >= inner.west && v.east <= inner.east && v.south >= inner.south && v.north <= inner.north;
+      if (overlaps && !hiddenByInner) out.add(r);
+    });
+    return out;
+  }
+
+  /** During playback, keep uploading only the ranges on screen. */
+  setAnimatedRanges(ranges: Set<RadarRange>, force = false) {
+    const same = ranges.size === this.animatedRanges.size && [...ranges].every((r) => this.animatedRanges.has(r));
+    this.animatedRanges = ranges;
+    if (!this.animating || (same && !force)) return;
+    RANGES.forEach((r) => {
+      const src = this.map.getSource(`radar-${r}`) as CanvasSource | undefined;
+      if (!src) return;
+      if (ranges.has(r)) src.play();
+      else src.pause();
+    });
   }
 
   repaintRadar() {
@@ -225,8 +256,11 @@ export class RadarMap {
     srcs.forEach((s) => s.play());
     this.map.triggerRepaint();
     clearTimeout(this.repaintTimer);
-    // Never pause mid-playback (e.g. after a basemap switch re-creates the sources).
-    this.repaintTimer = window.setTimeout(() => !this.animating && srcs.forEach((s) => s.pause()), 120);
+    // Never pause on-screen layers mid-playback (e.g. after a basemap switch re-creates the sources).
+    this.repaintTimer = window.setTimeout(() => {
+      if (this.animating) this.setAnimatedRanges(this.animatedRanges, true);
+      else srcs.forEach((s) => s.pause());
+    }, 120);
   }
 
   /** Continuous upload while animating (timeline playback). */
@@ -235,7 +269,7 @@ export class RadarMap {
     const srcs = this.radarSources();
     if (!srcs.length) return;
     clearTimeout(this.repaintTimer);
-    if (on) srcs.forEach((s) => s.play());
+    if (on) this.setAnimatedRanges(this.animatedRanges, true);
     else this.repaintRadar();
   }
 

@@ -119,8 +119,21 @@ export function colorToLevel(r: number, g: number, b: number): number {
 export function rgbaToLevels(rgba: Uint8ClampedArray, out?: Uint8Array): Uint8Array {
   const n = rgba.length >> 2;
   const levels = out ?? new Uint8Array(n);
+  // Most pixels are transparent, and neighbouring echoes repeat colours:
+  // short-circuit both cases before the map lookup.
+  let lastKey = -1;
+  let lastLevel = 0;
   for (let i = 0, p = 0; i < n; i++, p += 4) {
-    levels[i] = rgba[p + 3] < 16 ? 0 : colorToLevel(rgba[p], rgba[p + 1], rgba[p + 2]);
+    if (rgba[p + 3] < 16) {
+      levels[i] = 0;
+      continue;
+    }
+    const key = (rgba[p] << 16) | (rgba[p + 1] << 8) | rgba[p + 2];
+    if (key !== lastKey) {
+      lastKey = key;
+      lastLevel = colorToLevel(rgba[p], rgba[p + 1], rgba[p + 2]);
+    }
+    levels[i] = lastLevel;
   }
   return levels;
 }

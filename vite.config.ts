@@ -20,7 +20,17 @@ export default defineConfig({
     __BUILD__: JSON.stringify(`${sha} · ${built}`),
     __BUILD_SHA__: JSON.stringify(sha)
   },
-  build: { target: 'es2022', chunkSizeWarningLimit: 1500 },
+  build: {
+    target: 'es2022',
+    chunkSizeWarningLimit: 1500,
+    rollupOptions: {
+      output: {
+        // The map engine rarely changes: keep it in its own long-lived chunk so
+        // app updates don't make everyone re-download ~1 MB.
+        manualChunks: (id) => (id.includes('node_modules/maplibre-gl') ? 'maplibre' : undefined)
+      }
+    }
+  },
   worker: { format: 'es' },
   plugins: [
     versionFile(),

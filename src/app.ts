@@ -84,6 +84,8 @@ const SAVED = persisted<{ places: SavedPlace[] }>('rainrain.saved', { places: []
  */
 const NEXT_SCAN_DUE_MS = FRAME_MS + 20_000;
 const RETRY_MS = 30_000;
+/** Scans per range loaded before the first analysis (8 enables clutter filtering). */
+const FIRST_PASS_FRAMES = 8;
 const MAX_WAIT_MS = 5 * 60_000;
 const STEP_MS = 420;
 
@@ -123,6 +125,7 @@ export class App {
   private playRaf = 0;
   private refreshing: Promise<void> | null = null;
   private pollTimer = 0;
+  private backfillGen = 0;
   private gridTimer = 0;
   private pointsSeq = 0;
   private installEvt: (Event & { prompt(): Promise<void> }) | null = null;
@@ -241,11 +244,15 @@ export class App {
           RANGES.map((r, i) => listRecent(r, HISTORY_FRAMES).catch((e) => (i === 0 ? Promise.reject(e) : [])))
         );
         if (!refs[0].length) throw new Error('No radar scans available');
-        const frames = await Promise.all(refs.map((r) => loadFrames(r, 4)));
+        // Fast first paint: the newest scans (enough for tracking and clutter
+        // filtering) go to analysis right away; the rest of the 2-hour history
+        // streams in afterwards and is merged in.
+        const first = await Promise.all(refs.map((r) => loadFrames(r.slice(0, FIRST_PASS_FRAMES), 4)));
         if (this.status === 'loading') this.splash(0.7, 'Tracking rain echoes…');
-        await this.ingest(Object.fromEntries(RANGES.map((r, i) => [r, frames[i]])));
-        const f70 = frames[0];
+        await this.ingest(this.mergeHeld(first));
+        const f70 = first[0];
         this.setStatus(Date.now() - (f70[f70.length - 1]?.time ?? 0) > 20 * 60_000 ? 'stale' : 'live');
+        if (refs.some((r) => r.length > FIRST_PASS_FRAMES)) void this.backfill(refs);
       } catch (err) {
         console.warn('Radar refresh failed', err);
         const offline = !navigator.onLine;
@@ -268,6 +275,30 @@ export class App {
     const due = latest + NEXT_SCAN_DUE_MS - Date.now();
     const wait = due > 0 ? Math.min(due, MAX_WAIT_MS) : RETRY_MS;
     this.pollTimer = window.setTimeout(() => void this.poll(), wait);
+  }
+
+  /** Union of what we hold with newly loaded scans, per range, newest HISTORY_FRAMES kept. */
+  private mergeHeld(loaded: RadarFrame[][]): Partial<Record<RadarRange, RadarFrame[]>> {
+    return Object.fromEntries(
+      RANGES.map((r, i) => {
+        const byTime = new Map<number, RadarFrame>();
+        for (const f of this.held[r] ?? []) byTime.set(f.time, f);
+        for (const f of loaded[i] ?? []) byTime.set(f.time, f);
+        const newest = loaded[i]?.length ? Math.max(...loaded[i].map((f) => f.time)) : Infinity;
+        const all = [...byTime.values()].filter((f) => f.time > newest - HISTORY_FRAMES * FRAME_MS).sort((a, b) => a.time - b.time);
+        return [r, all.slice(-HISTORY_FRAMES)];
+      })
+    );
+  }
+
+  /** Load the remaining history in the background and merge it in. */
+  private async backfill(refs: ScanRef[][]) {
+    const gen = ++this.backfillGen;
+    const rest = await Promise.all(refs.map((r) => loadFrames(r.slice(FIRST_PASS_FRAMES), 3).catch(() => [])));
+    if (gen !== this.backfillGen) return;
+    // Wait out any update in flight so we merge onto the newest state.
+    if (this.refreshing) await this.refreshing.catch(() => undefined);
+    await this.ingest(this.mergeHeld(rest));
   }
 
   private async poll() {
@@ -306,6 +337,7 @@ export class App {
     this.clutter = res.clutter;
 
     const wasAtNow = this.timeline.current === this.nowIndex || latestOld === undefined;
+    const viewedTime = this.display[this.timeline.current]?.time;
     // Index every range's scans and forecasts by time, then align them to the 70 km timeline.
     const byTime = Object.fromEntries(
       RANGES.map((r) => {
@@ -332,7 +364,12 @@ export class App {
     this.nowIndex = f70.length - 1;
     for (const r of RANGES) this.renderers[r].retain(this.display.map((d) => d.layers[r]).filter((f): f is DisplayFrame => !!f));
     this.timeline.setFrames(this.display.map((d) => ({ time: d.time, forecast: d.forecast })), this.nowIndex);
-    if (wasAtNow || this.timeline.current >= this.display.length) this.timeline.setIndex(this.nowIndex, false);
+    if (wasAtNow) this.timeline.setIndex(this.nowIndex, false);
+    else {
+      // Keep looking at the same moment even if older history was prepended.
+      const same = this.display.findIndex((d) => d.time === viewedTime);
+      this.timeline.setIndex(same >= 0 ? same : this.nowIndex, false);
+    }
     this.showFrame(this.timeline.current);
 
     this.wind.setFields(this.flowFields());
@@ -438,7 +475,14 @@ export class App {
     const a = this.display[i];
     if (!a) return;
     const b = next !== null ? this.display[next] : null;
-    for (const r of RANGES) this.renderers[r].draw(a.layers[r] ?? null, b?.layers[r] ?? null, t);
+    // While playing, only redraw (and re-upload) the ranges actually on screen;
+    // a still frame redraws everything so panning reveals the right image.
+    const visible = this.playing ? this.map.visibleRanges() : null;
+    if (visible) this.map.setAnimatedRanges(visible);
+    for (const r of RANGES) {
+      if (visible && !visible.has(r)) continue;
+      this.renderers[r].draw(a.layers[r] ?? null, b?.layers[r] ?? null, t);
+    }
     if (!this.playing) this.map.repaintRadar();
     $('#app').classList.toggle('is-forecast', a.forecast);
   }
