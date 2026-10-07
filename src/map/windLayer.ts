@@ -20,7 +20,8 @@ export class WindLayer {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private particles: Particle[] = [];
-  private field: MotionField | null = null;
+  /** Motion fields, finest range first. */
+  private fields: MotionField[] = [];
   private vel: Float32Array = new Float32Array(0);
   private cols = 0;
   private rows = 0;
@@ -47,8 +48,8 @@ export class WindLayer {
     this.tint = dark ? '167,139,250' : '79,70,229';
   }
 
-  setField(f: MotionField | null) {
-    this.field = f;
+  setFields(fields: MotionField[]) {
+    this.fields = fields;
     this.rebuild();
   }
 
@@ -77,20 +78,19 @@ export class WindLayer {
     this.cols = Math.ceil(w / CELL) + 1;
     this.rows = Math.ceil(h / CELL) + 1;
     this.vel = new Float32Array(this.cols * this.rows * 2);
-    const f = this.field;
-    if (f) {
-      const b = RADAR_BBOX[f.range];
-      const { kx, ky } = kmPerPixel(f.range, f.width);
-      for (let r = 0; r < this.rows; r++) {
-        for (let c = 0; c < this.cols; c++) {
-          const ll = this.map.unproject([c * CELL, r * CELL]);
-          const p = geoToPixel(b, f.width, f.height, ll.lat, ll.lng);
-          const i = (r * this.cols + c) * 2;
+    for (let r = 0; r < this.rows; r++) {
+      for (let c = 0; c < this.cols; c++) {
+        const ll = this.map.unproject([c * CELL, r * CELL]);
+        const i = (r * this.cols + c) * 2;
+        for (const f of this.fields) {
+          const p = geoToPixel(RADAR_BBOX[f.range], f.width, f.height, ll.lat, ll.lng);
           if (p.x < 0 || p.y < 0 || p.x >= f.width || p.y >= f.height) continue;
+          const { kx, ky } = kmPerPixel(f.range, f.width);
           const [u, v] = motionAt(f, p.x, p.y);
           // km per 5 min → screen px per animation frame (stylised but proportional).
           this.vel[i] = u * kx * 0.9;
           this.vel[i + 1] = v * ky * 0.9;
+          break;
         }
       }
     }
@@ -120,7 +120,7 @@ export class WindLayer {
   }
 
   start() {
-    if (this.running || !this.visible || !this.field || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (this.running || !this.visible || !this.fields.length || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     this.running = true;
     const step = () => {
       if (!this.running) return;

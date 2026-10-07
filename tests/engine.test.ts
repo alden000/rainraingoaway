@@ -103,7 +103,7 @@ describe('nowcast', () => {
 
     // A point 60 px (~17 km) east of the cell centre is dry now but wet soon.
     const p = pixelToGeo(latest.bbox, W, W, 176 + 60 + 0.5, 180.5);
-    const state = { r70, r240: null, trend: 1, wind: domainWind(r70, null) };
+    const state = { ranges: { '70km': r70 }, trend: 1, wind: domainWind({ '70km': r70 }) };
     const pf = pointForecast(state, p.lat, p.lon);
     expect(pf.nowRate).toBeLessThan(0.1);
     const first = pf.steps.find((s) => s.prob >= 0.5);

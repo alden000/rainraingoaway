@@ -30,7 +30,7 @@ export class BottomSheet {
     if (!this.enabled) {
       this.panel.style.removeProperty('--sheet-y');
       document.documentElement.style.removeProperty('--sheet-visible');
-      this.panel.classList.remove('is-full');
+      this.panel.classList.remove('is-full', 'is-peek');
       return;
     }
     this.layout(false);
@@ -58,6 +58,8 @@ export class BottomSheet {
   layout(animate = true) {
     if (!this.enabled) return;
     if (!animate) this.panel.classList.add('is-dragging');
+    // Peek shows a condensed hero; set it first so its height is measured correctly.
+    this.panel.classList.toggle('is-peek', this.detent === 'peek');
     this.apply(this.height() - this.visibleFor(this.detent));
     this.panel.classList.toggle('is-full', this.detent === 'full');
     document.getElementById('app')?.classList.toggle('sheet-full', this.detent === 'full');

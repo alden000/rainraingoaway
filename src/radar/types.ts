@@ -91,6 +91,5 @@ export interface AnalysisSummary {
   trend: number;
   /** Fraction of the region of interest currently under rain. */
   regionCoverage: number;
-  motion70: MotionField | null;
-  motion240: MotionField | null;
+  motion: Partial<Record<RadarRange, MotionField | null>>;
 }

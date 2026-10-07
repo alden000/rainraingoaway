@@ -4,7 +4,7 @@
  * a neighbourhood ("probability") treatment that widens with lead time to
  * reflect growing uncertainty.
  */
-import { FRAME_MS, POINT_FORECAST_STEPS, type RadarRange } from '../config';
+import { FRAME_MS, POINT_FORECAST_STEPS, RANGES, type RadarRange } from '../config';
 import { distanceKm, bearingDeg } from '../lib/geo';
 import { RAIN_THRESHOLD, LEVEL_COUNT, rateToLevel } from './palette';
 import {
@@ -21,11 +21,14 @@ export interface RangeState {
 }
 
 export interface AnalysisState {
-  r70: RangeState | null;
-  r240: RangeState | null;
+  ranges: Partial<Record<RadarRange, RangeState>>;
   trend: number;
   wind: WindEstimate;
 }
+
+/** Longest lead (minutes) each range is trusted for before handing over to a wider one. */
+const MAX_LEAD: Record<RadarRange, number> = { '70km': 90, '240km': 180, '480km': 180 };
+const EDGE_MARGIN: Record<RadarRange, number> = { '70km': 6, '240km': 2, '480km': 1 };
 
 /** Level remap applying growth/decay over k steps. */
 function trendLut(trend: number, k: number): Uint8Array {
@@ -120,14 +123,15 @@ function trajectoryStep(m: MotionField | null, x: number, y: number): [number, n
 }
 
 export function pointForecast(state: AnalysisState, lat: number, lon: number): PointForecast {
-  const { r70, r240, trend } = state;
-  const issued = (r70 ?? r240)?.frame.time ?? Date.now();
+  const { trend } = state;
+  const available = RANGES.map((r) => state.ranges[r]).filter((r): r is RangeState => !!r);
+  const issued = available[0]?.frame.time ?? Date.now();
 
-  // ---- Now ---------------------------------------------------------------
+  // ---- Now: the finest range that covers the spot -------------------------
   let nowRate = 0;
   let nowLevel = 0;
   let clutter = false;
-  const primary = r70 && inside(r70.frame, ...xy(r70.frame, lat, lon)) ? r70 : r240;
+  const primary = available.find((r) => inside(r.frame, ...xy(r.frame, lat, lon))) ?? null;
   if (primary) {
     const [x, y] = xy(primary.frame, lat, lon);
     const f = primary.frame;
@@ -138,43 +142,36 @@ export function pointForecast(state: AnalysisState, lat: number, lon: number): P
     if (clutter) nowLevel = 0;
   }
 
-  // ---- Steps -----------------------------------------------------------
+  // ---- Steps: one back-trajectory per range, finest usable range wins ------
   const steps: ForecastStep[] = [
     { lead: 0, prob: nowRate >= RAIN_THRESHOLD ? 1 : 0, rate: nowRate, source: primary?.frame.range ?? '70km' }
   ];
   const conf = state.wind.confidence;
-  let p70: [number, number] | null = r70 ? xy(r70.frame, lat, lon) : null;
-  let p240: [number, number] | null = r240 ? xy(r240.frame, lat, lon) : null;
-  if (p70 && r70 && !inside(r70.frame, p70[0], p70[1])) p70 = null;
+  const pos = new Map<RangeState, [number, number]>();
+  const motion = new Map<RangeState, MotionField | null>();
+  for (const r of available) {
+    const p = xy(r.frame, lat, lon);
+    if (inside(r.frame, p[0], p[1])) pos.set(r, p);
+    motion.set(r, r.motion ?? fallbackMotion(state, r.frame.range));
+  }
 
   for (let k = 1; k <= POINT_FORECAST_STEPS; k++) {
     const lead = k * 5;
-    if (p70 && r70) p70 = trajectoryStep(r70.motion ?? fallbackMotion(state, '70km'), p70[0], p70[1]);
-    if (p240 && r240) p240 = trajectoryStep(r240.motion ?? fallbackMotion(state, '240km'), p240[0], p240[1]);
-
+    for (const [r, p] of pos) pos.set(r, trajectoryStep(motion.get(r) ?? null, p[0], p[1]));
     // Uncertainty grows with lead time, and faster when tracking is shaky.
     const sigmaKm = (0.5 + 0.075 * lead) * (1 + (1 - conf) * 0.8);
-    let use: RangeState | null = null;
-    let pos: [number, number] | null = null;
-    if (r70 && p70 && lead <= 90 && inside(r70.frame, p70[0], p70[1], 6)) {
-      use = r70;
-      pos = p70;
-    } else if (r240 && p240 && inside(r240.frame, p240[0], p240[1], 2)) {
-      use = r240;
-      pos = p240;
-    }
-    if (!use || !pos) {
-      steps.push({ lead, prob: 0, rate: 0, source: '240km' });
+    const use = available.find((r) => {
+      const p = pos.get(r);
+      return p && lead <= MAX_LEAD[r.frame.range] && inside(r.frame, p[0], p[1], EDGE_MARGIN[r.frame.range]);
+    });
+    if (!use) {
+      steps.push({ lead, prob: 0, rate: 0, source: available[available.length - 1]?.frame.range ?? '480km' });
       continue;
     }
-    const nb = neighbourhood(use, pos[0], pos[1], sigmaKm);
+    const p = pos.get(use)!;
+    const nb = neighbourhood(use, p[0], p[1], sigmaKm);
     const g = Math.pow(trend, k);
-    steps.push({
-      lead,
-      prob: Math.min(1, nb.prob * Math.min(1, g)),
-      rate: nb.rate * g,
-      source: use.frame.range
-    });
+    steps.push({ lead, prob: Math.min(1, nb.prob * Math.min(1, g)), rate: nb.rate * g, source: use.frame.range });
   }
 
   return {
@@ -191,11 +188,14 @@ function xy(f: RadarFrame, lat: number, lon: number): [number, number] {
   return [p.x, p.y];
 }
 
-/** Uniform field derived from the other range's global vector. */
+/** Uniform field derived from the most confident other range's global vector. */
 function fallbackMotion(state: AnalysisState, range: RadarRange): MotionField | null {
-  const other = range === '70km' ? state.r240 : state.r70;
-  const self = range === '70km' ? state.r70 : state.r240;
-  if (!other?.motion || !self) return null;
+  const self = state.ranges[range];
+  if (!self) return null;
+  const other = RANGES.map((r) => state.ranges[r])
+    .filter((r): r is RangeState => !!r && r !== self && !!r.motion && r.motion.confidence > 0)
+    .sort((a, b) => b.motion!.confidence - a.motion!.confidence)[0];
+  if (!other?.motion) return null;
   const { kx: okx } = kmPerPixel(other.frame.range, other.frame.width);
   const { kx: skx } = kmPerPixel(range, self.frame.width);
   const s = okx / skx;
@@ -210,7 +210,10 @@ function fallbackMotion(state: AnalysisState, range: RadarRange): MotionField | 
 
 /** Follow the flow upwind from the spot to find the rain that is heading here. */
 function upstreamRain(state: AnalysisState, lat: number, lon: number): UpstreamRain | null {
-  const r = state.r240 ?? state.r70;
+  // Prefer the 240 km view (≈1 km pixels); fall back to the wider or finer scans.
+  const r = (['240km', '480km', '70km'] as RadarRange[])
+    .map((k) => state.ranges[k])
+    .find((rs) => rs && inside(rs.frame, ...xy(rs.frame, lat, lon)));
   if (!r) return null;
   const motion = r.motion ?? fallbackMotion(state, r.frame.range);
   const f = r.frame;
@@ -271,7 +274,7 @@ function scanDisk(r: RangeState, x: number, y: number, radius: number): number {
 }
 
 function nearestRain(state: AnalysisState, lat: number, lon: number): NearestRain | null {
-  for (const r of [state.r70, state.r240]) {
+  for (const r of RANGES.map((k) => state.ranges[k])) {
     if (!r) continue;
     const f = r.frame;
     const [x0, y0] = xy(f, lat, lon);
@@ -304,11 +307,10 @@ function nearestRain(state: AnalysisState, lat: number, lon: number): NearestRai
 }
 
 /** Domain-wide wind, preferring the high-resolution range when it is trustworthy. */
-export function domainWind(r70: RangeState | null, r240: RangeState | null): WindEstimate {
-  const m70 = r70?.motion;
-  const m240 = r240?.motion;
-  const pick =
-    m70 && m70.confidence >= 0.3 ? m70 : m240 && m240.confidence > (m70?.confidence ?? 0) ? m240 : m70 ?? m240;
+export function domainWind(ranges: Partial<Record<RadarRange, RangeState>>): WindEstimate {
+  const fields = RANGES.map((r) => ranges[r]?.motion).filter((m): m is MotionField => !!m);
+  // Finest field that is trustworthy, else the most confident one.
+  const pick = fields.find((m) => m.confidence >= 0.3) ?? [...fields].sort((a, b) => b.confidence - a.confidence)[0];
   if (!pick || pick.confidence === 0) return { fromDeg: 0, speedKmh: 0, confidence: 0, source: 'none' };
   const w = vectorToWind(pick.range, pick.width, pick.globalU, pick.globalV);
   return { fromDeg: w.fromDeg, speedKmh: w.speedKmh, confidence: pick.confidence, source: pick.range };
@@ -316,8 +318,10 @@ export function domainWind(r70: RangeState | null, r240: RangeState | null): Win
 
 function localWind(state: AnalysisState, lat: number, lon: number): WindEstimate {
   const base = state.wind;
-  const r = base.source === '240km' ? state.r240 : state.r70;
-  if (!r?.motion || base.source === 'none') return base;
+  if (base.source === 'none') return base;
+  // Local steering from the finest field covering the spot.
+  const r = RANGES.map((k) => state.ranges[k]).find((rs) => rs?.motion && rs.motion.confidence > 0 && inside(rs.frame, ...xy(rs.frame, lat, lon)));
+  if (!r?.motion) return base;
   const [x, y] = xy(r.frame, lat, lon);
   if (!inside(r.frame, x, y)) return base;
   const [u, v] = motionAt(r.motion, x, y);

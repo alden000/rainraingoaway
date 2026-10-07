@@ -2,7 +2,7 @@
  * A tiny offline gazetteer so we can label a location ("near Bishan")
  * without ever sending the user's position to a third-party geocoder.
  */
-import { distanceKm, type LatLon } from './geo';
+import { bearingDeg, compassPoint, distanceKm, type LatLon } from './geo';
 
 export const PLACES: Array<[string, number, number]> = [
   ['Ang Mo Kio', 1.3691, 103.8454], ['Bedok', 1.3236, 103.9273], ['Bishan', 1.3526, 103.8352],
@@ -29,7 +29,26 @@ export const PLACES: Array<[string, number, number]> = [
   ['Southern Islands', 1.2213, 103.8456], ['Lentor', 1.3854, 103.8366], ['Loyang', 1.3726, 103.9733],
   ['Johor Bahru', 1.4655, 103.7578], ['Pasir Gudang', 1.4726, 103.878], ['Iskandar Puteri', 1.426, 103.64],
   ['Pengerang', 1.37, 104.1], ['Batam', 1.13, 104.03], ['Sekupang, Batam', 1.118, 103.952],
-  ['Nongsa, Batam', 1.19, 104.1], ['Gelang Patah', 1.45, 103.59]
+  ['Nongsa, Batam', 1.19, 104.1], ['Gelang Patah', 1.45, 103.59],
+  // Region covered by the 240 km / 480 km radar images.
+  ['Kuala Lumpur', 3.139, 101.687], ['Putrajaya', 2.926, 101.696], ['Shah Alam', 3.073, 101.518],
+  ['Klang', 3.044, 101.445], ['Seremban', 2.726, 101.938], ['Port Dickson', 2.522, 101.796],
+  ['Melaka', 2.189, 102.25], ['Muar', 2.044, 102.568], ['Batu Pahat', 1.854, 102.933],
+  ['Kluang', 2.03, 103.318], ['Segamat', 2.503, 102.815], ['Mersing', 2.431, 103.836],
+  ['Kota Tinggi', 1.738, 103.9], ['Desaru', 1.55, 104.25], ['Pontian', 1.487, 103.39],
+  ['Kulai', 1.659, 103.6], ['Pulau Tioman', 2.79, 104.17], ['Kuantan', 3.807, 103.326],
+  ['Pekan', 3.493, 103.39], ['Temerloh', 3.448, 102.418], ['Bentong', 3.522, 101.909],
+  ['Genting Highlands', 3.424, 101.794], ['Raub', 3.79, 101.857], ['Kuala Terengganu', 5.33, 103.14],
+  ['Dungun', 4.758, 103.418], ['Kemaman', 4.233, 103.42], ['Kota Bharu', 6.125, 102.238],
+  ['Ipoh', 4.597, 101.09], ['Teluk Intan', 4.022, 101.02], ['Tanjung Malim', 3.685, 101.518],
+  ['Tanjung Pinang', 0.918, 104.459], ['Bintan', 1.08, 104.5], ['Tanjung Balai Karimun', 1.0, 103.43],
+  ['Lingga', -0.2, 104.6], ['Pekanbaru', 0.507, 101.448], ['Dumai', 1.665, 101.447],
+  ['Bengkalis', 1.47, 102.1], ['Selat Panjang', 1.01, 102.71], ['Tembilahan', -0.32, 103.16],
+  ['Rengat', -0.38, 102.55], ['Jambi', -1.61, 103.61], ['Kuala Tungkal', -0.82, 103.46],
+  ['Muara Sabak', -1.13, 103.82], ['Pangkal Pinang', -2.13, 106.11], ['Muntok', -2.06, 105.16],
+  ['Anambas Islands', 3.2, 106.25], ['Tambelan Islands', 1.0, 107.55], ['Natuna Islands', 3.9, 108.2],
+  ['Belitung', -2.75, 107.65], ['Siak', 0.8, 102.05], ['Bagan Siapiapi', 2.16, 100.81],
+  ['Kuala Selangor', 3.34, 101.25], ['Rawang', 3.32, 101.58], ['Mentakab', 3.48, 102.35]
 ];
 
 export interface PlaceLabel {
@@ -47,6 +66,11 @@ export function nearestPlace(p: LatLon): PlaceLabel {
       best = pl;
     }
   }
-  if (bestD > 4.5) return { name: p.lat < 1.24 ? 'Singapore Strait' : 'Open water', distanceKm: bestD };
-  return { name: best[0], distanceKm: bestD };
+  if (bestD <= 4.5) return { name: best[0], distanceKm: bestD };
+  // Near Singapore, water is the likely answer; further out, describe relative to a town.
+  const inSingapore = p.lat > 1.15 && p.lat < 1.48 && p.lon > 103.6 && p.lon < 104.1;
+  if (inSingapore) return { name: p.lat < 1.24 ? 'Singapore Strait' : 'Open water', distanceKm: bestD };
+  if (bestD <= 15) return { name: `Near ${best[0]}`, distanceKm: bestD };
+  const dir = compassPoint(bearingDeg({ lat: best[1], lon: best[2] }, p));
+  return { name: `${Math.round(bestD)} km ${dir} of ${best[0]}`, distanceKm: bestD };
 }

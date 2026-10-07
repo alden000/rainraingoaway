@@ -308,8 +308,8 @@ input[type='range']::-moz-range-thumb { width: 22px; height: 22px; border: 0; bo
 .maplibregl-ctrl-attrib-button { filter: var(--attrib-filter, invert(0.8)); }
 :root[data-theme='light'] .maplibregl-ctrl-attrib-button { filter: none; }
 @media (max-width: 899px) {
-  .maplibregl-ctrl-bottom-right { bottom: auto; top: calc(var(--safe-top) + 72px); right: auto; left: calc(var(--safe-left) + 4px); }
-  .maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 0 0 10px; }
+  .app .maplibregl-ctrl-bottom-right { bottom: auto; top: calc(var(--safe-top) + 72px); right: auto; left: calc(var(--safe-left) + 4px); }
+  .app .maplibregl-ctrl-bottom-right .maplibregl-ctrl { margin: 0 0 0 10px; }
 }
 
 /* ===== SPLASH ============================================================= */

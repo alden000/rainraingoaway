@@ -149,6 +149,33 @@
   .app.sheet-full .timeline { opacity: 0; transform: translateY(20px); pointer-events: none; }
   .grid-chip { bottom: calc(var(--sheet-visible, 40vh) + 92px); transition: bottom 0.6s var(--ease-sheet), opacity 0.4s; left: auto; }
   .panel.is-dragging ~ .grid-chip { transition: none; }
+
+  /* Compact timeline on phones. */
+  .timeline { height: 58px; padding: 7px 12px 7px 7px; gap: 10px; border-radius: 20px; }
+  .tl-play { width: 44px; height: 44px; border-radius: 15px; }
+  .tl-play svg { width: 18px; height: 18px; }
+  .tl-body { gap: 2px; }
+  .tl-labels strong { font-size: 16px; }
+  .tl-rel { font-size: 10px; }
+  .tl-track { height: 22px; }
+  .tl-rail { top: 9px; }
+  .tl-thumb { top: 11px; width: 18px; height: 18px; margin: -9px 0 0 -9px; }
+  .tl-ticks b { bottom: -9px; font-size: 9px; }
+  .sheet-grabber { height: 20px; }
+
+  /* Condensed hero while the sheet is peeking: just place, status and the headline. */
+  .panel.is-peek .hero { padding: 12px 16px 14px; min-height: 0; }
+  .panel.is-peek .hero .eyebrow,
+  .panel.is-peek .hero__meta,
+  .panel.is-peek .hero__actions,
+  .panel.is-peek .hero__rate { display: none; }
+  .panel.is-peek .hero__top { align-items: center; }
+  .panel.is-peek .hero__name { margin-top: 0; font-size: 19px; }
+  .panel.is-peek .hero .icon-btn { width: 34px; height: 34px; }
+  .panel.is-peek .hero__now { margin-top: 4px; gap: 10px; }
+  .panel.is-peek .glyph { width: 40px; height: 42px; }
+  .panel.is-peek .hero__title { font-size: 34px; height: 44px; padding-bottom: 8px; margin-bottom: -8px; }
+  .panel.is-peek .hero__headline { margin-top: 6px; font-size: 14px; padding-left: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
 /* ---- Cards --------------------------------------------------------------*/

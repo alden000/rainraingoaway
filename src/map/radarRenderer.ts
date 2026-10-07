@@ -2,6 +2,7 @@
  * Rasterises level grids with the chosen palette and composites the visible
  * state (with cross-fades between scans) into the canvas MapLibre displays.
  */
+import { RADAR_BBOX, RANGES, type RadarRange } from '../config';
 import { packedPalette, type PaletteId } from '../radar/palette';
 
 export interface DisplayFrame {
@@ -18,7 +19,19 @@ export class RadarRenderer {
   private cache = new Map<string, HTMLCanvasElement>();
   private palette: PaletteId = 'signature';
 
-  constructor(size = 480) {
+  /** Pixel rect covered by the next finer range — cleared so layers don't double up. */
+  private hole: { x0: number; y0: number; x1: number; y1: number } | null = null;
+
+  constructor(readonly range: RadarRange, size = 480) {
+    const inner = RANGES[RANGES.indexOf(range) - 1];
+    if (inner) {
+      const o = RADAR_BBOX[range];
+      const i = RADAR_BBOX[inner];
+      const fx = (lon: number) => ((lon - o.west) / (o.east - o.west)) * size;
+      const fy = (lat: number) => ((o.north - lat) / (o.north - o.south)) * size;
+      // Inset by a pixel so the finer layer overlaps the seam slightly.
+      this.hole = { x0: Math.ceil(fx(i.west)) + 1, y0: Math.ceil(fy(i.north)) + 1, x1: Math.floor(fx(i.east)) - 1, y1: Math.floor(fy(i.south)) - 1 };
+    }
     this.canvas = document.createElement('canvas');
     this.canvas.width = size;
     this.canvas.height = size;
@@ -55,6 +68,11 @@ export class RadarRenderer {
     const L = f.levels;
     for (let i = 0; i < L.length; i++) out[i] = pal[L[i]];
     cx.putImageData(img, 0, 0);
+    if (this.hole) {
+      const sx = f.width / this.canvas.width;
+      const h = this.hole;
+      cx.clearRect(h.x0 * sx, h.y0 * sx, (h.x1 - h.x0) * sx, (h.y1 - h.y0) * sx);
+    }
     this.cache.set(k, c);
     return c;
   }

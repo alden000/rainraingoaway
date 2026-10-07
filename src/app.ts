@@ -3,7 +3,7 @@
  * analysis worker, and keeps the map and every panel in sync.
  */
 import {
-  DEFAULT_CELL_M, FRAME_MS, HISTORY_FRAMES_240, HISTORY_FRAMES_70, RADAR_BBOX, REGION_BBOX, SINGAPORE_CENTER
+  COVERAGE_BBOX, DEFAULT_CELL_M, FRAME_MS, HISTORY_FRAMES, RADAR_BBOX, RANGES, SINGAPORE_CENTER, type RadarRange
 } from './config';
 import { compassName, compassPoint, inBBox, distanceKm, type LatLon } from './lib/geo';
 import { configureHaptics, haptic, installPressFeedback } from './lib/haptics';
@@ -48,6 +48,12 @@ interface Settings {
   cellSize: number;
 }
 
+interface TimelineEntry {
+  time: number;
+  forecast: boolean;
+  layers: Partial<Record<RadarRange, DisplayFrame>>;
+}
+
 interface SavedPlace {
   id: string;
   name: string;
@@ -78,9 +84,10 @@ export class App {
   private provisionalSpot = false;
 
   private frames70: RadarFrame[] = [];
-  private display: DisplayFrame[] = [];
+  /** Timeline entries; each carries the matching scan (or forecast) for every range. */
+  private display: TimelineEntry[] = [];
   private nowIndex = 0;
-  private clutter70: Uint8Array | null = null;
+  private clutter: Partial<Record<RadarRange, Uint8Array | null>> = {};
   private summary: AnalysisSummary | null = null;
   private pf: PointForecast | null = null;
   private savedPf = new Map<string, PointForecast>();
@@ -90,7 +97,7 @@ export class App {
   private reqId = 0;
   private pending = new Map<number, (r: WorkerResponse) => void>();
 
-  private renderer = new RadarRenderer(480);
+  private renderers = Object.fromEntries(RANGES.map((r) => [r, new RadarRenderer(r, 480)])) as Record<RadarRange, RadarRenderer>;
   private map!: RadarMap;
   private wind!: WindLayer;
   private timeline!: Timeline;
@@ -126,11 +133,10 @@ export class App {
     this.splash(0.15, 'Contacting the NEA radar…');
 
     // Instant start from cache, then go to the network.
-    const [c70, c240] = await Promise.all([
-      cachedFrames('70km', HISTORY_FRAMES_70 * FRAME_MS + 10 * 60_000).catch(() => []),
-      cachedFrames('240km', HISTORY_FRAMES_240 * FRAME_MS + 10 * 60_000).catch(() => [])
-    ]);
-    if (c70.length) await this.ingest(c70, c240);
+    const cached = await Promise.all(
+      RANGES.map((r) => cachedFrames(r, HISTORY_FRAMES * FRAME_MS + 10 * 60_000).catch(() => []))
+    );
+    if (cached[0].length) await this.ingest(Object.fromEntries(RANGES.map((r, i) => [r, cached[i]])));
 
     this.locate(false);
     await Promise.race([this.refresh(), new Promise((r) => setTimeout(r, 12_000))]);
@@ -176,14 +182,14 @@ export class App {
     this.refreshing = (async () => {
       try {
         if (this.status === 'loading') this.splash(0.3, 'Downloading the latest scans…');
-        const [r70, r240] = await Promise.all([
-          listRecent('70km', HISTORY_FRAMES_70),
-          listRecent('240km', HISTORY_FRAMES_240).catch(() => [])
-        ]);
-        if (!r70.length) throw new Error('No radar scans available');
-        const [f70, f240] = await Promise.all([loadFrames(r70, 6), loadFrames(r240, 4)]);
+        const refs = await Promise.all(
+          RANGES.map((r, i) => listRecent(r, HISTORY_FRAMES).catch((e) => (i === 0 ? Promise.reject(e) : [])))
+        );
+        if (!refs[0].length) throw new Error('No radar scans available');
+        const frames = await Promise.all(refs.map((r) => loadFrames(r, 4)));
         if (this.status === 'loading') this.splash(0.7, 'Tracking rain echoes…');
-        await this.ingest(f70, f240);
+        await this.ingest(Object.fromEntries(RANGES.map((r, i) => [r, frames[i]])));
+        const f70 = frames[0];
         this.setStatus(Date.now() - (f70[f70.length - 1]?.time ?? 0) > 20 * 60_000 ? 'stale' : 'live');
       } catch (err) {
         console.warn('Radar refresh failed', err);
@@ -214,42 +220,61 @@ export class App {
     }
   }
 
-  private async ingest(f70: RadarFrame[], f240: RadarFrame[]) {
+  private async ingest(frames: Partial<Record<RadarRange, RadarFrame[]>>) {
+    const f70 = frames['70km'] ?? [];
     if (!f70.length) return;
     const latestOld = this.frames70[this.frames70.length - 1]?.time;
     this.frames70 = f70;
     const id = ++this.reqId;
-    const res = await this.call({ type: 'analyze', id, frames70: f70, frames240: f240 });
+    const res = await this.call({ type: 'analyze', id, frames });
     if (res.type !== 'analysis') {
       console.warn('Analysis failed', res);
       return;
     }
     if (id !== this.reqId) return;
     this.summary = res.summary;
-    this.clutter70 = res.clutter70;
+    this.clutter = res.clutter;
 
     const wasAtNow = this.timeline.current === this.nowIndex || latestOld === undefined;
-    const past: DisplayFrame[] = f70.map((f) => ({ time: f.time, levels: f.levels, width: f.width, height: f.height, forecast: false }));
-    const fut: DisplayFrame[] = res.forecast.map((f) => ({ time: f.time, levels: f.levels, width: 480, height: 480, forecast: true }));
-    this.display = [...past, ...fut];
-    this.nowIndex = past.length - 1;
-    this.renderer.retain(this.display);
+    // Index every range's scans and forecasts by time, then align them to the 70 km timeline.
+    const byTime = Object.fromEntries(
+      RANGES.map((r) => {
+        const m = new Map<number, DisplayFrame>();
+        for (const f of frames[r] ?? []) m.set(f.time, { time: f.time, levels: f.levels, width: f.width, height: f.height, forecast: false });
+        for (const f of res.forecast[r] ?? []) m.set(f.time, { time: f.time, levels: f.levels, width: 480, height: 480, forecast: true });
+        return [r, m];
+      })
+    ) as Record<RadarRange, Map<number, DisplayFrame>>;
+    const pick = (r: RadarRange, t: number) => {
+      const exact = byTime[r].get(t);
+      if (exact) return exact;
+      // A missing scan: fall back to the closest earlier one within 10 minutes.
+      let best: DisplayFrame | undefined;
+      for (const f of byTime[r].values()) if (f.time <= t && t - f.time <= 10 * 60_000 && (!best || f.time > best.time)) best = f;
+      return best;
+    };
+    const times = [...f70.map((f) => f.time), ...(res.forecast['70km'] ?? []).map((f) => f.time)];
+    this.display = times.map((t, i) => ({
+      time: t,
+      forecast: i >= f70.length,
+      layers: Object.fromEntries(RANGES.map((r) => [r, pick(r, t)]).filter(([, f]) => f))
+    }));
+    this.nowIndex = f70.length - 1;
+    for (const r of RANGES) this.renderers[r].retain(this.display.map((d) => d.layers[r]).filter((f): f is DisplayFrame => !!f));
     this.timeline.setFrames(this.display.map((d) => ({ time: d.time, forecast: d.forecast })), this.nowIndex);
     if (wasAtNow || this.timeline.current >= this.display.length) this.timeline.setIndex(this.nowIndex, false);
     this.showFrame(this.timeline.current);
 
-    this.wind.setField(this.flowField());
+    this.wind.setFields(this.flowFields());
     this.renderWind();
     this.updateFreshness();
     await this.requestPoints();
   }
 
-  private flowField(): MotionField | null {
-    const s = this.summary;
-    if (!s) return null;
-    if (s.motion70 && s.motion70.confidence >= 0.25) return s.motion70;
-    if (s.motion240 && s.motion240.confidence > 0) return s.motion240;
-    return s.motion70;
+  /** Trackable motion fields, finest range first. */
+  private flowFields(): MotionField[] {
+    const m = this.summary?.motion ?? {};
+    return RANGES.map((r) => m[r]).filter((f): f is MotionField => !!f && f.confidence > 0);
   }
 
   private async requestPoints() {
@@ -307,11 +332,11 @@ export class App {
   }
 
   private initMap() {
-    this.renderer.setPalette(this.settings.palette);
+    for (const r of RANGES) this.renderers[r].setPalette(this.settings.palette);
     this.map = new RadarMap({
       container: $('#map'),
       basemap: this.resolvedBasemap(),
-      radarCanvas: this.renderer.canvas,
+      radarCanvases: Object.fromEntries(RANGES.map((r) => [r, this.renderers[r].canvas])) as Record<RadarRange, HTMLCanvasElement>,
       onPick: (p) => this.pick(p),
       onMove: () => this.scheduleGrid()
     });
@@ -342,7 +367,8 @@ export class App {
   private showFrame(i: number, next: number | null = null, t = 0) {
     const a = this.display[i];
     if (!a) return;
-    this.renderer.draw(a, next !== null ? this.display[next] : null, t);
+    const b = next !== null ? this.display[next] : null;
+    for (const r of RANGES) this.renderers[r].draw(a.layers[r] ?? null, b?.layers[r] ?? null, t);
     if (!this.playing) this.map.repaintRadar();
     $('#app').classList.toggle('is-forecast', a.forecast);
   }
@@ -352,13 +378,19 @@ export class App {
     this.gridTimer = window.setTimeout(() => this.updateGrid(), 60);
   }
 
-  private frameSampler(frame: DisplayFrame | undefined) {
-    const b = RADAR_BBOX['70km'];
-    const mask = frame && !frame.forecast ? this.clutter70 : null;
+  /** Rain rate at a point for a timeline entry, from the finest range covering it. */
+  private frameSampler(entry: TimelineEntry | undefined) {
     return (lat: number, lon: number) => {
-      if (!frame) return 0;
-      const p = geoToPixel(b, frame.width, frame.height, lat, lon);
-      return sampleRate(frame.levels, frame.width, frame.height, p.x, p.y, mask);
+      if (!entry) return 0;
+      for (const r of RANGES) {
+        const frame = entry.layers[r];
+        if (!frame) continue;
+        const p = geoToPixel(RADAR_BBOX[r], frame.width, frame.height, lat, lon);
+        if (p.x < 0 || p.y < 0 || p.x >= frame.width || p.y >= frame.height) continue;
+        const mask = frame.forecast ? null : this.clutter[r] ?? null;
+        return sampleRate(frame.levels, frame.width, frame.height, p.x, p.y, mask);
+      }
+      return 0;
     };
   }
 
@@ -384,9 +416,9 @@ export class App {
   /* ---- Spot & location ---------------------------------------------------- */
   private pick(p: LatLon, name?: string) {
     this.provisionalSpot = false;
-    if (!inBBox(p, REGION_BBOX)) {
+    if (!inBBox(p, COVERAGE_BBOX)) {
       haptic('warning');
-      toast('That spot is outside RainRain’s Singapore coverage', { icon: 'info' });
+      toast('That spot is beyond the NEA radar’s 480 km coverage', { icon: 'info' });
       return;
     }
     haptic('medium');
@@ -413,10 +445,10 @@ export class App {
     const onPos = (pos: GeolocationPosition) => {
       btn.classList.remove('is-busy');
       const p = { lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy };
-      if (!inBBox(p, REGION_BBOX)) {
+      if (!inBBox(p, COVERAGE_BBOX)) {
         this.gps = null;
         this.map.setUserLocation(null);
-        if (!this.spot || this.provisionalSpot) this.fallbackSpot('You’re outside Singapore — showing the island centre');
+        if (!this.spot || this.provisionalSpot) this.fallbackSpot('You’re outside radar coverage — showing Singapore');
         return;
       }
       const first = !this.gps;
@@ -823,7 +855,7 @@ export class App {
     });
     choose('#opt-palette', (v) => {
       this.saveSettings({ palette: v as PaletteId });
-      this.renderer.setPalette(v as PaletteId);
+      for (const r of RANGES) this.renderers[r].setPalette(v as PaletteId);
       this.map.setPalette(v as PaletteId);
       this.chart.setPalette(v as PaletteId);
       this.renderLegend();

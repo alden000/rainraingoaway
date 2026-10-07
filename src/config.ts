@@ -2,7 +2,10 @@
 
 export const API_BASE = 'https://api-open.data.gov.sg/v2/real-time/api/weather-radar-images';
 
-export type RadarRange = '70km' | '240km';
+export type RadarRange = '70km' | '240km' | '480km';
+
+/** Finest first. */
+export const RANGES: RadarRange[] = ['70km', '240km', '480km'];
 
 export interface BBox {
   west: number;
@@ -16,7 +19,8 @@ export const RADAR_STATION = { lon: 103.972583, lat: 1.34911 };
 /** Image footprints as published by data.gov.sg (EPSG:4326). */
 export const RADAR_BBOX: Record<RadarRange, BBox> = {
   '70km': { west: 103.342685, north: 1.97854, east: 104.602315, south: 0.719515 },
-  '240km': { west: 101.810507, north: 3.506012, east: 106.130495, south: -0.809711 }
+  '240km': { west: 101.810507, north: 3.506012, east: 106.130495, south: -0.809711 },
+  '480km': { west: 99.638609, north: 5.657912, east: 108.290871, south: -2.967382 }
 };
 
 /** Mainland Singapore plus outlying islands. */
@@ -40,9 +44,11 @@ export const SINGAPORE_CENTER = { lon: 103.8198, lat: 1.3521 };
 export const FRAME_MINUTES = 5;
 export const FRAME_MS = FRAME_MINUTES * 60_000;
 
-/** History kept for playback and analysis. */
-export const HISTORY_FRAMES_70 = 25; // 2 hours
-export const HISTORY_FRAMES_240 = 7; // 30 minutes – enough for motion tracking
+/** Full extent NEA publishes — the app's coverage area. */
+export const COVERAGE_BBOX: BBox = RADAR_BBOX['480km'];
+
+/** History kept for playback and analysis (2 hours of scans per range). */
+export const HISTORY_FRAMES = 25;
 
 /** Forecast horizons. */
 export const DISPLAY_FORECAST_STEPS = 12; // +60 min of animated forecast imagery

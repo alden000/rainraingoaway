@@ -151,8 +151,8 @@ export function cellFromSVY21(N0: number, E0: number, size: number): GridCell {
 
 export function formatCellId(N0: number, E0: number): string {
   const fmt = (v: number) => {
-    const s = Math.round(v).toString().padStart(5, '0');
-    return `${s.slice(0, -3)} ${s.slice(-3)}`;
+    const s = Math.abs(Math.round(v)).toString().padStart(5, '0');
+    return `${v < 0 ? '−' : ''}${s.slice(0, -3)} ${s.slice(-3)}`;
   };
   return `N${fmt(N0)} · E${fmt(E0)}`;
 }

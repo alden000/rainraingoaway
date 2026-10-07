@@ -4,7 +4,7 @@ import type { GeoJSONSource, CanvasSource, ExpressionSpecification } from 'mapli
 import 'maplibre-gl/dist/maplibre-gl.css';
 // MapLibre resolves its worker relative to its own module URL, which bundling breaks.
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
-import { RADAR_BBOX, REGION_BBOX, SINGAPORE_BBOX, SINGAPORE_CENTER } from '../config';
+import { COVERAGE_BBOX, RADAR_BBOX, RANGES, SINGAPORE_BBOX, SINGAPORE_CENTER, type RadarRange } from '../config';
 import type { LatLon } from '../lib/geo';
 import { cellAt } from '../lib/svy21';
 import { LEVEL_COUNT, cssColor, levelToRate, type PaletteId } from '../radar/palette';
@@ -13,7 +13,7 @@ import { buildStyle, FIRST_LABEL_LAYER, type BasemapId } from './style';
 export interface MapOptions {
   container: HTMLElement;
   basemap: BasemapId;
-  radarCanvas: HTMLCanvasElement;
+  radarCanvases: Record<RadarRange, HTMLCanvasElement>;
   onPick: (p: LatLon) => void;
   onMove: () => void;
 }
@@ -23,17 +23,17 @@ maplibregl.setWorkerUrl(maplibreWorkerUrl);
 const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
 
 function paddedRegion(): [[number, number], [number, number]] {
-  const padLon = (REGION_BBOX.east - REGION_BBOX.west) * 0.35;
-  const padLat = (REGION_BBOX.north - REGION_BBOX.south) * 0.35;
+  const padLon = (COVERAGE_BBOX.east - COVERAGE_BBOX.west) * 0.08;
+  const padLat = (COVERAGE_BBOX.north - COVERAGE_BBOX.south) * 0.08;
   return [
-    [REGION_BBOX.west - padLon, REGION_BBOX.south - padLat],
-    [REGION_BBOX.east + padLon, REGION_BBOX.north + padLat]
+    [COVERAGE_BBOX.west - padLon, COVERAGE_BBOX.south - padLat],
+    [COVERAGE_BBOX.east + padLon, COVERAGE_BBOX.north + padLat]
   ];
 }
 
 export class RadarMap {
   readonly map: maplibregl.Map;
-  private radarCanvas: HTMLCanvasElement;
+  private radarCanvases: Record<RadarRange, HTMLCanvasElement>;
   private spotMarker: maplibregl.Marker | null = null;
   private userMarker: maplibregl.Marker | null = null;
   private gridData: GeoJSON.FeatureCollection = EMPTY;
@@ -47,14 +47,14 @@ export class RadarMap {
   readonly ready: Promise<void>;
 
   constructor(opts: MapOptions) {
-    this.radarCanvas = opts.radarCanvas;
+    this.radarCanvases = opts.radarCanvases;
     this.basemap = opts.basemap;
     this.map = new maplibregl.Map({
       container: opts.container,
       style: buildStyle(opts.basemap),
       center: [SINGAPORE_CENTER.lon, SINGAPORE_CENTER.lat],
       zoom: 10.4,
-      minZoom: 9,
+      minZoom: 5,
       maxZoom: 19.5,
       maxBounds: paddedRegion(),
       attributionControl: false,
@@ -98,25 +98,28 @@ export class RadarMap {
 
   private installOverlays() {
     const m = this.map;
-    const b = RADAR_BBOX['70km'];
     const before = m.getLayer(FIRST_LABEL_LAYER) ? FIRST_LABEL_LAYER : undefined;
     const dark = this.basemap !== 'daylight';
 
-    m.addSource('radar', {
-      type: 'canvas',
-      canvas: this.radarCanvas,
-      animate: false,
-      coordinates: [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]]
-    });
-    m.addLayer(
-      {
-        id: 'radar',
-        type: 'raster',
-        source: 'radar',
-        paint: { 'raster-opacity': this.radarOpacity, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
-      },
-      before
-    );
+    // Widest first so the finer ranges draw on top.
+    for (const r of [...RANGES].reverse()) {
+      const b = RADAR_BBOX[r];
+      m.addSource(`radar-${r}`, {
+        type: 'canvas',
+        canvas: this.radarCanvases[r],
+        animate: false,
+        coordinates: [[b.west, b.north], [b.east, b.north], [b.east, b.south], [b.west, b.south]]
+      });
+      m.addLayer(
+        {
+          id: `radar-${r}`,
+          type: 'raster',
+          source: `radar-${r}`,
+          paint: { 'raster-opacity': this.radarOpacity, 'raster-resampling': 'linear', 'raster-fade-duration': 0 }
+        },
+        before
+      );
+    }
 
     m.addSource('grid', { type: 'geojson', data: this.gridData });
     m.addLayer(
@@ -178,7 +181,9 @@ export class RadarMap {
 
   setRadarOpacity(o: number) {
     this.radarOpacity = o;
-    if (this.map.getLayer('radar')) this.map.setPaintProperty('radar', 'raster-opacity', o);
+    for (const r of RANGES) {
+      if (this.map.getLayer(`radar-${r}`)) this.map.setPaintProperty(`radar-${r}`, 'raster-opacity', o);
+    }
   }
 
   setGridVisible(v: boolean) {
@@ -189,21 +194,25 @@ export class RadarMap {
   }
 
   /** Push the latest canvas contents to the GPU. */
+  private radarSources(): CanvasSource[] {
+    return RANGES.map((r) => this.map.getSource(`radar-${r}`) as CanvasSource | undefined).filter((s): s is CanvasSource => !!s);
+  }
+
   repaintRadar() {
-    const src = this.map.getSource('radar') as CanvasSource | undefined;
-    if (!src) return;
-    src.play();
+    const srcs = this.radarSources();
+    if (!srcs.length) return;
+    srcs.forEach((s) => s.play());
     this.map.triggerRepaint();
     clearTimeout(this.repaintTimer);
-    this.repaintTimer = window.setTimeout(() => src.pause(), 120);
+    this.repaintTimer = window.setTimeout(() => srcs.forEach((s) => s.pause()), 120);
   }
 
   /** Continuous upload while animating (timeline playback). */
   setRadarAnimating(on: boolean) {
-    const src = this.map.getSource('radar') as CanvasSource | undefined;
-    if (!src) return;
+    const srcs = this.radarSources();
+    if (!srcs.length) return;
     clearTimeout(this.repaintTimer);
-    if (on) src.play();
+    if (on) srcs.forEach((s) => s.play());
     else this.repaintRadar();
   }
 

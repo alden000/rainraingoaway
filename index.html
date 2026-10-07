@@ -29,7 +29,7 @@
           <span class="live" id="live" data-state="loading"><i></i><span id="live-text">Connecting</span></span>
         </button>
         <button class="search-trigger glass" id="search-open" aria-label="Search for a place">
-          <span data-icon="search"></span><span class="search-trigger__text">Search a place in Singapore</span>
+          <span data-icon="search"></span><span class="search-trigger__text">Search a place</span>
           <kbd>/</kbd>
         </button>
       </header>
@@ -232,10 +232,10 @@
         <div class="modal__card modal__card--sheet">
           <header class="modal__head"><h2>How RainRain works</h2><button class="icon-btn" data-close aria-label="Close"><span data-icon="close"></span></button></header>
           <div class="modal__body prose">
-            <p><strong>The radar.</strong> Every five minutes NEA's weather radar at Changi publishes a rain-intensity image. RainRain downloads the 70 km image (≈290 m pixels) for detail over Singapore and the 240 km image (≈1 km pixels) to see rain approaching from further away.</p>
+            <p><strong>The radar.</strong> Every five minutes NEA's weather radar at Changi publishes a rain-intensity image. RainRain downloads all three images NEA publishes: 70 km (≈290 m pixels) for detail over Singapore, 240 km (≈1 km pixels) and 480 km (≈2 km pixels) to cover southern Malaysia, Riau and beyond. The map always shows the sharpest one available for each area.</p>
             <p><strong>Your 5 m square.</strong> The map is divided into 5 × 5 m cells aligned to Singapore's SVY21 national grid. Your cell's reading is interpolated from the surrounding radar pixels, so the answer changes smoothly as you move. The radar itself can't resolve 5 m, so neighbouring cells usually agree.</p>
             <p><strong>Tracking & forecasting.</strong> Successive scans are block-matched to measure how each part of the rain field is moving. The latest scan is then carried forward along that motion (semi-Lagrangian extrapolation), with growth or decay taken from the recent trend. Uncertainty widens with lead time, which is why the forecast shows a <em>chance</em> of rain rather than a yes/no.</p>
-            <p><strong>Beyond 30 minutes.</strong> RainRain follows the flow upwind across the 240 km image to find the next band of rain headed your way and estimates when it will arrive.</p>
+            <p><strong>Beyond 30 minutes.</strong> RainRain follows the flow upwind across the 240 km and 480 km images to find the next band of rain headed your way and estimates when it will arrive.</p>
             <p><strong>Wind.</strong> The motion of rain echoes reveals the wind that steers them, typically 1–3 km above ground. It is only available while there is rain to track.</p>
             <p><strong>Ground clutter.</strong> Echoes that sit perfectly still scan after scan are flagged as non-weather and ignored.</p>
             <p><strong>Privacy.</strong> Your location never leaves your device. Place names come from a built-in gazetteer; only search text you type is sent to OneMap.</p>
