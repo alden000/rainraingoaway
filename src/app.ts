@@ -84,6 +84,8 @@ const SAVED = persisted<{ places: SavedPlace[] }>('rainrain.saved', { places: []
  */
 const NEXT_SCAN_DUE_MS = FRAME_MS + 20_000;
 const RETRY_MS = 30_000;
+/** Newest scan older than this shows as "Delayed". */
+const STALE_AFTER_MS = 20 * 60_000;
 /** Scans per range loaded before the first analysis (8 enables clutter filtering). */
 const FIRST_PASS_FRAMES = 8;
 const MAX_WAIT_MS = 5 * 60_000;
@@ -222,11 +224,13 @@ export class App {
         needFull = f70.length >= 2 && f70[f70.length - 1].time - f70[f70.length - 2].time > 2 * FRAME_MS;
         if (!needFull) {
           await this.ingest(next);
-          this.setStatus('live');
+          this.markFresh();
         }
       } catch (err) {
         console.warn('Radar update failed', err);
-        this.setStatus(navigator.onLine ? 'stale' : 'offline');
+        // A transient failure doesn't make held data old: judge by its age.
+        if (navigator.onLine) this.markFresh();
+        else this.setStatus('offline');
       } finally {
         this.refreshing = null;
       }
@@ -250,13 +254,14 @@ export class App {
         const first = await Promise.all(refs.map((r) => loadFrames(r.slice(0, FIRST_PASS_FRAMES), 4)));
         if (this.status === 'loading') this.splash(0.7, 'Tracking rain echoes…');
         await this.ingest(this.mergeHeld(first));
-        const f70 = first[0];
-        this.setStatus(Date.now() - (f70[f70.length - 1]?.time ?? 0) > 20 * 60_000 ? 'stale' : 'live');
+        this.markFresh();
         if (refs.some((r) => r.length > FIRST_PASS_FRAMES)) void this.backfill(refs);
       } catch (err) {
         console.warn('Radar refresh failed', err);
         const offline = !navigator.onLine;
-        this.setStatus(this.frames70.length ? (offline ? 'offline' : 'stale') : offline ? 'offline' : 'error');
+        if (offline) this.setStatus('offline');
+        else if (this.frames70.length) this.markFresh();
+        else this.setStatus('error');
         if (!this.frames70.length) {
           setText($('#now-rate'), offline ? 'You are offline — radar unavailable' : 'Radar temporarily unavailable');
           toast(offline ? 'Offline — will refresh when you reconnect' : 'Could not reach the NEA radar. Retrying shortly.', { icon: 'radar' });
@@ -313,7 +318,7 @@ export class App {
         if (have && latest.time - have <= 2 * FRAME_MS) await this.update(latest);
         else await this.refresh();
         if (latest.time > have && have) haptic('selection');
-      } else this.updateFreshness();
+      } else this.markFresh(); // already have the newest scan
     } catch {
       if (!navigator.onLine) this.setStatus('offline');
     }
@@ -403,6 +408,12 @@ export class App {
   }
 
   /* ---- Status ------------------------------------------------------------ */
+  /** Live while the newest scan is recent; "Delayed" only when the data really is old. */
+  private markFresh() {
+    const latest = this.frames70[this.frames70.length - 1]?.time ?? 0;
+    this.setStatus(Date.now() - latest > STALE_AFTER_MS ? 'stale' : 'live');
+  }
+
   private setStatus(s: App['status']) {
     this.status = s;
     this.updateFreshness();
@@ -412,7 +423,7 @@ export class App {
     const live = $('#live');
     const latest = this.frames70[this.frames70.length - 1]?.time;
     let state = this.status;
-    if (state === 'live' && latest && Date.now() - latest > 20 * 60_000) state = 'stale';
+    if (state === 'live' && latest && Date.now() - latest > STALE_AFTER_MS) state = 'stale';
     live.dataset.state = state;
     const text =
       state === 'loading' ? 'Connecting' : state === 'error' ? 'No data' : state === 'offline' ? 'Offline' : state === 'stale' ? `Delayed · ${latest ? clock(latest) : ''}` : `Live · ${latest ? clock(latest) : ''}`;
@@ -834,10 +845,10 @@ export class App {
     setText($('#build-tag'), `Build ${__BUILD__}`);
     this.timeline = new Timeline($('#timeline'), {
       onScrub: (i) => {
-        if (!this.playing) {
-          this.showFrame(i);
-          this.scheduleGrid();
-        } else if (document.activeElement === $('#tl-track')) this.stopPlay();
+        if (!this.playing) this.showFrame(i);
+        else if (document.activeElement === $('#tl-track')) this.stopPlay();
+        // Keep the grid's rain cells in step with the radar frame, including during playback.
+        this.scheduleGrid();
       },
       onTogglePlay: () => this.togglePlay()
     });
