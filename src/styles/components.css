@@ -104,6 +104,8 @@
 .wind__dir { margin-top: 4px; font-weight: 650; font-size: 14.5px; }
 .wind__sentence { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
 .wind__local { margin-top: 8px; font-size: 12px; color: var(--ink-3); }
+.wind__ground { margin-top: 8px; display: flex; align-items: flex-start; gap: 6px; font-size: 12px; color: var(--ink-2); line-height: 1.4; }
+.wind__ground-arrow { flex: none; display: inline-block; width: 14px; text-align: center; color: var(--calm); transition: transform 1.2s var(--ease-spring); }
 
 /* ===== NEARBY SCOPE ======================================================= */
 .nearby__body { display: grid; grid-template-columns: 120px 1fr; gap: 16px; align-items: center; }

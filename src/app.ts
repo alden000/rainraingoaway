@@ -18,6 +18,7 @@ import { WindLayer } from './map/windLayer';
 import { cachedFrames, listLatest, listRecent, loadFrame, loadFrames, pruneCache, type ScanRef } from './radar/api';
 import type { WorkerRequest, WorkerResponse } from './radar/analysis.worker';
 import { geoToPixel, sampleRate } from './radar/frameMath';
+import { groundWindAt, refreshGroundWind } from './radar/groundWind';
 import {
   clock, confidenceLabel, deriveInsights, duration, windDescriptor, windSentence
 } from './radar/insights';
@@ -378,6 +379,7 @@ export class App {
     this.showFrame(this.timeline.current);
 
     this.wind.setFields(this.flowFields());
+    void refreshGroundWind().then(() => this.renderGroundWind());
     this.renderWind();
     this.updateFreshness();
     await this.requestPoints();
@@ -556,6 +558,7 @@ export class App {
     this.spot = s;
     this.map.setSpot(s, this.settings.cellSize, s.kind);
     this.renderSpotHeader();
+    if (this.summary) this.renderGroundWind();
     const moved = !prev || distanceKm(prev, s) * 1000 >= this.settings.cellSize || prev.kind !== s.kind;
     if (moved) void this.requestPoints();
   }
@@ -728,10 +731,28 @@ export class App {
       ? `Over this spot: ${Math.round(w.localSpeedKmh)} km/h from the ${compassPoint(w.localFromDeg)} · tracked on the ${w.source} radar`
       : known ? `Tracked on the ${w.source} radar` : '';
     setText($('#wind-local'), local);
+    this.renderGroundWind();
     setText($('#pk-wind-text'), known ? `${Math.round(w.speedKmh)} km/h ${compassPoint(w.fromDeg)}` : 'Calm');
     const arrow = $('#pk-arrow');
     arrow.style.transform = `rotate(${known ? (w.fromDeg + 180) % 360 : 0}deg)`;
     arrow.style.opacity = known ? '1' : '0.3';
+  }
+
+  /** NEA station wind nearest the spot, for comparison with the steering wind. */
+  private renderGroundWind() {
+    const el = $('#wind-ground');
+    const g = this.spot ? groundWindAt(this.spot) : null;
+    el.hidden = !g;
+    if (!g) return;
+    const calm = g.speedKmh < 1;
+    const where = g.distanceKm < 1 ? g.station : `${g.station}, ${g.distanceKm < 10 ? g.distanceKm.toFixed(1) : Math.round(g.distanceKm)} km away`;
+    setText(
+      $('#wind-ground-text'),
+      `Ground level: ${calm ? 'calm' : `${Math.round(g.speedKmh)} km/h from the ${compassPoint(g.fromDeg)}`} · NEA ${where}${g.time ? ` · ${clock(g.time)}` : ''}`
+    );
+    const arrow = $('#wind-ground-arrow');
+    arrow.style.transform = `rotate(${(g.fromDeg + 180) % 360}deg)`;
+    arrow.style.opacity = calm ? '0.3' : '1';
   }
 
   private renderPlaces() {
