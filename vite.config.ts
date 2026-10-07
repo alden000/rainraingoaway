@@ -30,11 +30,24 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,woff2,png,svg}'],
+        // HTML is deliberately not precached: it is served network-first (below)
+        // so a new deploy shows up on the next load instead of one visit later.
+        globPatterns: ['**/*.{js,css,woff2,png,svg}'],
         globIgnores: ['**/*cyrillic*', '**/*greek*', '**/*vietnamese*'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        navigateFallback: 'index.html',
+        navigateFallback: null,
+        cleanupOutdatedCaches: true,
         runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pages',
+              networkTimeoutSeconds: 4,
+              expiration: { maxEntries: 4 },
+              cacheableResponse: { statuses: [200] }
+            }
+          },
           {
             // Basemap vector tiles, glyphs, sprites and styles.
             urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/,
