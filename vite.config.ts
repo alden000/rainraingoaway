@@ -50,7 +50,7 @@ export default defineConfig({
         // Explicit, permanent app identity (resolved against start_url). Without
         // it Chrome derives the id from start_url; a stale install record under
         // that implicit id was blocking re-installs ("already installed").
-        id: './?app=rainrain',
+        id: '/rainraingoaway/?app=rainrain',
         start_url: './',
         scope: './',
         categories: ['weather', 'utilities'],
