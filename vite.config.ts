@@ -47,10 +47,10 @@ export default defineConfig({
         background_color: '#070b14',
         display: 'standalone',
         orientation: 'any',
-        // Explicit, permanent app identity (resolved against start_url). Without
-        // it Chrome derives the id from start_url; a stale install record under
-        // that implicit id was blocking re-installs ("already installed").
-        id: '/rainraingoaway/?app=rainrain',
+        // Served from its own origin (rainrain.wwweeeiii.com): Chrome on Android
+        // allows only one installed web app per origin, so RainRain can't share
+        // app.wwweeeiii.com with other installed apps.
+        id: '/',
         start_url: './',
         scope: './',
         categories: ['weather', 'utilities'],

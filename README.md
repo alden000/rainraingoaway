@@ -31,7 +31,9 @@ Geolocation needs a secure context. `localhost` counts, but to test on a phone u
 
 ## Deploy
 
-`dist/` is a static site that works from any path. The included workflow (`.github/workflows/deploy.yml`) publishes it to GitHub Pages on every push to `main`. To turn it on, go to **Settings → Pages → Source: GitHub Actions**.
+Live at **https://rainrain.wwweeeiii.com** (the old `app.wwweeeiii.com/rainraingoaway/` address redirects there).
+
+`dist/` is a static site that works from any path. The included workflow (`.github/workflows/deploy.yml`) publishes it to GitHub Pages on every push to `main` or the working branch. It uses its own subdomain because Chrome on Android allows only one installed web app per origin.
 
 ## How the forecast works
 
