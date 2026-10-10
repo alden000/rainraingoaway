@@ -42,6 +42,7 @@ export class RadarMap {
   private palette: PaletteId = 'signature';
   private radarOpacity = 0.85;
   private gridVisible = true;
+  private gridFillPaused = false;
   private basemap: BasemapId;
   private repaintTimer = 0;
   /** True during timeline playback: radar textures must re-upload every frame. */
@@ -211,9 +212,24 @@ export class RadarMap {
 
   setGridVisible(v: boolean) {
     this.gridVisible = v;
-    for (const id of ['grid-fill', 'grid-line']) {
+    this.applyGridVisibility();
+  }
+
+  /**
+   * Hide the grid's rain cells while the radar animates. Rebuilding them every
+   * frame made playback stutter and they always trailed the cross-faded radar.
+   */
+  setGridFillPaused(paused: boolean) {
+    this.gridFillPaused = paused;
+    this.applyGridVisibility();
+  }
+
+  private applyGridVisibility() {
+    const show = (id: string, v: boolean) => {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', v ? 'visible' : 'none');
-    }
+    };
+    show('grid-line', this.gridVisible);
+    show('grid-fill', this.gridVisible && !this.gridFillPaused);
   }
 
   /** Push the latest canvas contents to the GPU. */
@@ -273,9 +289,26 @@ export class RadarMap {
     else this.repaintRadar();
   }
 
-  setGrid(fc: GeoJSON.FeatureCollection) {
+  /** Replace the grid; `onReady` fires once the map has processed the new cells. */
+  setGrid(fc: GeoJSON.FeatureCollection, onReady?: () => void) {
     this.gridData = fc;
-    (this.map.getSource('grid') as GeoJSONSource | undefined)?.setData(fc);
+    const src = this.map.getSource('grid') as GeoJSONSource | undefined;
+    if (!src) return onReady?.();
+    if (onReady) {
+      let done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        this.map.off('sourcedata', listener);
+        onReady();
+      };
+      const listener = (e: { sourceId?: string; isSourceLoaded?: boolean }) => {
+        if (e.sourceId === 'grid' && e.isSourceLoaded) finish();
+      };
+      this.map.on('sourcedata', listener);
+      setTimeout(finish, 600);
+    }
+    src.setData(fc);
   }
 
   setSpot(p: LatLon, cellSize: number, kind: 'gps' | 'pick') {

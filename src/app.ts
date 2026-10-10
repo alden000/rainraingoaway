@@ -521,11 +521,11 @@ export class App {
     };
   }
 
-  private updateGrid() {
+  private updateGrid(onReady?: () => void) {
     const chip = $('#grid-chip');
     const zoom = this.map.zoom();
     if (!this.settings.grid || zoom < 12) {
-      this.map.setGrid({ type: 'FeatureCollection', features: [] });
+      this.map.setGrid({ type: 'FeatureCollection', features: [] }, onReady);
       chip.classList.add('is-hidden');
       return;
     }
@@ -533,9 +533,10 @@ export class App {
     const g = buildGrid(this.map.bounds(), this.settings.cellSize, this.frameSampler(frame));
     if (!g) {
       chip.classList.add('is-hidden');
+      onReady?.();
       return;
     }
-    this.map.setGrid(g.fc);
+    this.map.setGrid(g.fc, onReady);
     chip.classList.remove('is-hidden');
     setText($('#grid-chip-text'), g.size === this.settings.cellSize ? `${g.size} m grid` : `${g.size} m grid · zoom in for ${this.settings.cellSize} m`);
   }
@@ -817,6 +818,7 @@ export class App {
     this.playing = true;
     this.timeline.setPlaying(true);
     this.map.setRadarAnimating(true);
+    this.map.setGridFillPaused(true);
     const start = Math.max(0, this.nowIndex - 12);
     if (this.timeline.current >= this.loopEnd() || this.timeline.current < start) this.timeline.setIndex(start);
     let t0 = performance.now();
@@ -853,7 +855,10 @@ export class App {
     this.timeline.setPlaying(false);
     this.map.setRadarAnimating(false);
     this.showFrame(this.timeline.current);
-    this.scheduleGrid();
+    // Rebuild the rain cells for the paused frame, and reveal them only once
+    // they're ready so a stale frame never flashes up.
+    clearTimeout(this.gridTimer);
+    this.updateGrid(() => this.map.setGridFillPaused(false));
   }
 
   /* ---- UI wiring ---------------------------------------------------------- */
@@ -866,10 +871,10 @@ export class App {
     setText($('#build-tag'), `Build ${__BUILD__}`);
     this.timeline = new Timeline($('#timeline'), {
       onScrub: (i) => {
-        if (!this.playing) this.showFrame(i);
-        else if (document.activeElement === $('#tl-track')) this.stopPlay();
-        // Keep the grid's rain cells in step with the radar frame, including during playback.
-        this.scheduleGrid();
+        if (!this.playing) {
+          this.showFrame(i);
+          this.scheduleGrid();
+        } else if (document.activeElement === $('#tl-track')) this.stopPlay();
       },
       onTogglePlay: () => this.togglePlay()
     });
